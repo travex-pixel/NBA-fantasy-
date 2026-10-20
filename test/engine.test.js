@@ -210,3 +210,18 @@ test('live stats blend: name matching with diacritics, volume-weighted %, K weig
   const again = applyLiveStats(r.players, live, { k: 25 }).players.find(p => p.id === 'jokic');
   assert.equal(again.pts, 31.25);
 });
+
+test('injury report attaches to players and the recommender flags and penalises OUT players', async () => {
+  const { applyLiveStats, computeValues, recommend } = await import('../src/engine.js');
+  const injuries = { 'Jimmy Butler': { status: 'Out', type: 'Knee', returnDate: '2027-01-02' }, 'Stephen Curry': { status: 'Day-To-Day', type: 'Ankle' } };
+  const r = applyLiveStats(PLAYERS, {}, { injuries });
+  const butler = r.players.find(p => p.id === 'butler'); const curry = r.players.find(p => p.id === 'curry');
+  assert.equal(butler.injury.status, 'Out'); assert.equal(curry.injury.type, 'Ankle'); assert.equal(r.players.find(p => p.id === 'jokic').injury, null);
+  const v = computeValues(r.players);
+  const rec = recommend(v, [], { currentPick: 1, nextPick: 20 });
+  const b = rec.candidates.find(c => c.player.id === 'butler'); const c = rec.candidates.find(c => c.player.id === 'curry');
+  assert.ok(b.flags.some(f => /Out \(Knee\), est. return 2027-01-02/.test(f)));
+  assert.ok(c.flags.some(f => /Day-To-Day \(Ankle\)/.test(f)));
+  const plain = recommend(computeValues(PLAYERS), [], { currentPick: 1, nextPick: 20 });
+  assert.ok(b.score < plain.candidates.find(x => x.player.id === 'butler').score - 0.7, 'OUT costs ~0.8');
+});

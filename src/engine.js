@@ -285,6 +285,12 @@ export function recommend(available, roster, opts = {}) {
 
     // Availability risk / injuries
     if (p.gp != null && p.gp < 55) { flags.push(`Projected ~${p.gp} games`); }
+    if (p.injury) {
+      const st = String(p.injury.status || '').toLowerCase();
+      const isOut = /out/.test(st) && !/doubt/.test(st);
+      flags.push(`${p.injury.status || 'Injury'}${p.injury.type ? ' (' + p.injury.type + ')' : ''}${p.injury.returnDate ? ', est. return ' + p.injury.returnDate : ''}`);
+      score -= isOut ? 0.8 : /doubtful/.test(st) ? 0.4 : 0.1;
+    }
     if (p.risk) flags.push(p.risk);
 
     // ADP / value & survive-to-next-pick
@@ -381,15 +387,18 @@ export function applyLiveStats(players, liveMap, opts = {}) {
   const use = opts.use ?? true;
   const idx = new Map();
   for (const [name, row] of Object.entries(liveMap || {})) idx.set(normaliseName(name), row);
+  const injIdx = new Map();
+  for (const [name, row] of Object.entries(opts.injuries || {})) injIdx.set(normaliseName(name), row);
   let matched = 0;
   const out = players.map(p => {
     const live = idx.get(normaliseName(p.name)) || null;
-    if (!live || !(live.gp > 0)) return { ...p, live: null, preseason: p.preseason || null };
+    const injury = injIdx.get(normaliseName(p.name)) || null;
+    if (!live || !(live.gp > 0)) return { ...p, live: null, injury, preseason: p.preseason || null };
     matched++;
     const gp = live.gp;
     const w = K / (K + gp), v = gp / (K + gp);
     const pre = p.preseason || { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tpm: p.tpm, fgp: p.fgp, fga: p.fga, ftp: p.ftp, fta: p.fta, tov: p.tov, gp: p.gp };
-    if (!use) return { ...p, ...pre, live, preseason: pre };
+    if (!use) return { ...p, ...pre, live, injury, preseason: pre };
     const b = {};
     for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) b[k] = typeof live[k] === 'number' ? +(pre[k] * w + live[k] * v).toFixed(2) : pre[k];
     // volume-weighted percentage blend
@@ -400,7 +409,7 @@ export function applyLiveStats(players, liveMap, opts = {}) {
     b.fga = +fga.toFixed(2); b.fta = +fta.toFixed(2);
     b.fgp = fga > 0 ? +(fgm / fga).toFixed(3) : pre.fgp;
     b.ftp = fta > 0 ? +(ftm / fta).toFixed(3) : pre.ftp;
-    return { ...p, ...b, live, preseason: pre };
+    return { ...p, ...b, live, injury, preseason: pre };
   });
   return { players: out, matched, unmatched: players.length - matched };
 }

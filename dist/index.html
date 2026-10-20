@@ -73,6 +73,8 @@
   .paste-box { border:2px dashed var(--accent); border-radius:12px; padding:18px 12px; text-align:center; font-weight:700; color:var(--accent); min-height:64px; margin:8px 0; background:#0e1627; }
   .paste-box img { max-width:100%; }
   .live { color:#7fd8ff; }
+  .inj { font-size:11px; font-weight:800; padding:2px 6px; border-radius:6px; vertical-align:middle; }
+  .inj-out { background:var(--bad); color:#2a0000; } .inj-gtd { background:var(--accent); color:var(--accent-text); }
   code { background:#0e1627; padding:1px 5px; border-radius:4px; }
   .file-input { margin:6px 0; padding:10px; background:#0e1627; }
   .file-btn { display:flex; align-items:center; justify-content:center; text-align:center; }
@@ -379,6 +381,12 @@ function recommend(available, roster, opts = {}) {
 
     // Availability risk / injuries
     if (p.gp != null && p.gp < 55) { flags.push(`Projected ~${p.gp} games`); }
+    if (p.injury) {
+      const st = String(p.injury.status || '').toLowerCase();
+      const isOut = /out/.test(st) && !/doubt/.test(st);
+      flags.push(`${p.injury.status || 'Injury'}${p.injury.type ? ' (' + p.injury.type + ')' : ''}${p.injury.returnDate ? ', est. return ' + p.injury.returnDate : ''}`);
+      score -= isOut ? 0.8 : /doubtful/.test(st) ? 0.4 : 0.1;
+    }
     if (p.risk) flags.push(p.risk);
 
     // ADP / value & survive-to-next-pick
@@ -475,15 +483,18 @@ function applyLiveStats(players, liveMap, opts = {}) {
   const use = opts.use ?? true;
   const idx = new Map();
   for (const [name, row] of Object.entries(liveMap || {})) idx.set(normaliseName(name), row);
+  const injIdx = new Map();
+  for (const [name, row] of Object.entries(opts.injuries || {})) injIdx.set(normaliseName(name), row);
   let matched = 0;
   const out = players.map(p => {
     const live = idx.get(normaliseName(p.name)) || null;
-    if (!live || !(live.gp > 0)) return { ...p, live: null, preseason: p.preseason || null };
+    const injury = injIdx.get(normaliseName(p.name)) || null;
+    if (!live || !(live.gp > 0)) return { ...p, live: null, injury, preseason: p.preseason || null };
     matched++;
     const gp = live.gp;
     const w = K / (K + gp), v = gp / (K + gp);
     const pre = p.preseason || { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tpm: p.tpm, fgp: p.fgp, fga: p.fga, ftp: p.ftp, fta: p.fta, tov: p.tov, gp: p.gp };
-    if (!use) return { ...p, ...pre, live, preseason: pre };
+    if (!use) return { ...p, ...pre, live, injury, preseason: pre };
     const b = {};
     for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) b[k] = typeof live[k] === 'number' ? +(pre[k] * w + live[k] * v).toFixed(2) : pre[k];
     // volume-weighted percentage blend
@@ -494,7 +505,7 @@ function applyLiveStats(players, liveMap, opts = {}) {
     b.fga = +fga.toFixed(2); b.fta = +fta.toFixed(2);
     b.fgp = fga > 0 ? +(fgm / fga).toFixed(3) : pre.fgp;
     b.ftp = fta > 0 ? +(ftm / fta).toFixed(3) : pre.ftp;
-    return { ...p, ...b, live, preseason: pre };
+    return { ...p, ...b, live, injury, preseason: pre };
   });
   return { players: out, matched, unmatched: players.length - matched };
 }
@@ -803,8 +814,13 @@ function setState(next, { undoable = true } = {}) { if (undoable) history.push(s
 
 function valued() {
   const weights = {}; for (const k of state.punts || []) weights[k] = 0;
-  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25 }).players : PLAYERS;
+  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25, injuries: liveData.injuries || {} }).players : PLAYERS;
   return E.computeValues(base, { gpWeight: state.gpWeight !== false, weights });
+}
+function injuryBadge(p) {
+  if (!p.injury) return '';
+  const st = String(p.injury.status || '').toLowerCase(); const cls = /out/.test(st) && !/doubt/.test(st) ? 'inj-out' : /doubt/.test(st) ? 'inj-out' : 'inj-gtd';
+  return `<span class="inj ${cls}" title="${esc(p.injury.comment || '')}">${esc(p.injury.status || 'INJ')}${p.injury.returnDate ? ' → ' + esc(p.injury.returnDate) : ''}</span>`;
 }
 function liveLine(p) {
   if (!p.live) return '';
@@ -898,7 +914,7 @@ function candCard(cnd, c, { primary = false } = {}) {
   return `<div class="cand ${primary ? 'primary' : ''}">
     <div class="cand-top">
       <div>
-        <div class="cand-name">${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></div>
+        <div class="cand-name">${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span> ${injuryBadge(p)}</div>
         <div class="muted small">Model #${p.modelRank}${typeof p.adp === 'number' ? ` · ADP ~${p.adp}` : ' · ADP n/a'}${cnd.likelyGone === true ? ' · <b>likely gone before your next pick</b>' : cnd.likelyGone === false ? ' · may still be there next pick' : ''}</div>
       </div>
       <div class="cand-actions">
@@ -1105,7 +1121,7 @@ function rosterPanel(c) {
   const a = E.assignRoster(c.roster);
   const prof = c.rec.profile;
   return `<div class="label">YOUR ROSTER (${c.roster.length}/${E.ROSTER_SIZE})</div>
-    <div class="roster">${a.assignments.map(x => `<div class="rslot ${x.player ? 'filled' : ''}"><span class="rs">${x.slot}</span><span>${x.player ? esc(x.player.name) : '<span class="muted">open</span>'}</span></div>`).join('')}</div>
+    <div class="roster">${a.assignments.map(x => `<div class="rslot ${x.player ? 'filled' : ''}"><span class="rs">${x.slot}</span><span>${x.player ? esc(x.player.name) + ' ' + injuryBadge(x.player) : '<span class="muted">open</span>'}</span></div>`).join('')}</div>
     <div class="label">CATEGORY BALANCE (sum of z)</div>
     <div class="bars">${E.CATS.map(k => { const v = prof[k.key] || 0; const w = Math.min(100, Math.abs(v) / 6 * 100); return `<div class="bar"><span class="bl">${k.label}</span><div class="bt"><div class="bf ${v >= 0 ? 'pos' : 'neg'} ${state.punts.includes(k.key) ? 'punt' : ''}" style="width:${w}%"></div></div><span class="bv">${v >= 0 ? '+' : ''}${v.toFixed(1)}</span></div>`; }).join('')}</div>`;
 }
@@ -1128,7 +1144,7 @@ function playersView(c) {
     </div>
   </section>
   <section class="list">${list.slice(0, 150).map(p => `<div class="prow ${gone.has(p.id) ? 'gone' : ''}">
-      <div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span></div>
+      <div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span> ${injuryBadge(p)}</div>
       <div class="small muted">${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}${p.risk ? ' · ⚠' : ''} · ${p.value.toFixed(1)}${p.live ? ` · <span class="live">live ${p.live.gp} gp: ${p.live.pts}/${p.live.reb}/${p.live.ast}</span>` : ''}</div></div>
       ${gone.has(p.id) ? '<span class="muted small">drafted</span>' : `<div class="cand-actions"><button class="btn-primary btn-sm" data-draft-me="${p.id}">ME</button><button class="btn-ghost btn-sm" data-draft-other="${p.id}">Taken</button></div>`}
     </div>`).join('') || '<p class="muted card">No match. Player not in the pool? Draft the pick as "Unknown" below.</p>'}
@@ -1153,7 +1169,7 @@ function strategyView(c) {
   </section>
   <section class="card">
     <h2>Live NBA stats</h2>
-    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
+    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}${liveData.injuries ? ` · injuries listed: ${Object.keys(liveData.injuries).length}` : ' · no injury report in payload'}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
     <label class="row"><span>Blend live stats into projections (K = 25 games)</span><input type="checkbox" id="useLive" ${state.useLive !== false ? 'checked' : ''}/></label>
     <div class="small muted">Blended = (preseason × 25 + live × games) ÷ (25 + games). Percentages blend on makes and attempts. Unmatched players keep their preseason line.</div>
   </section>
@@ -1191,7 +1207,8 @@ function strategyView(c) {
 function detailModal(c) {
   const p = c.byId[detailId]; if (!p) return '';
   return `<div class="modal" id="modal"><div class="modal-card">
-    <h2>${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></h2>
+    <h2>${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span> ${injuryBadge(p)}</h2>
+    ${p.injury ? `<p class="small flag">${esc(p.injury.status || '')}${p.injury.type ? ' · ' + esc(p.injury.type) : ''}${p.injury.detail ? ' · ' + esc(p.injury.detail) : ''}${p.injury.returnDate ? ' · est. return ' + esc(p.injury.returnDate) : ''}${p.injury.comment ? '<br>' + esc(p.injury.comment) : ''}</p>` : ''}
     <div class="chips">${catChips(p, { punts: state.punts })}</div>
     <p class="small">${esc(statLine(p))}</p>
     ${p.live ? `<p class="small live">${esc(liveLine(p))}</p>` : ''}

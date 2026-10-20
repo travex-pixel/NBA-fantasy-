@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { normalise } from '../scripts/fetch-stats.mjs';
 const players = normalise(JSON.parse(readFileSync('test/fixtures/nba-stats-sample.json', 'utf8')));
-const doc = { source: 'fixture', season: '2026-27', fetchedAt: '2026-10-25T05:00:00Z', count: Object.keys(players).length, players };
+const doc = { source: 'fixture', season: '2026-27', fetchedAt: '2026-10-25T05:00:00Z', count: Object.keys(players).length, players, injuries: { 'Anthony Edwards': { status: 'Day-To-Day', type: 'Ankle', returnDate: '2026-10-26', comment: 'Edwards (ankle) is questionable.' } } };
 const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 const errors = []; page.on('pageerror', e => errors.push(String(e))); page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -22,6 +22,7 @@ await page.click('[data-detail="edwards"]');
 txt = await page.textContent('#modal');
 assert.ok(/Blended proj: 28\.6\d? pts/.test(txt), 'blended pts = (28.5*25 + 30.5*2)/27 ≈ 28.65: ' + txt.match(/Blended proj: [^·]+/));
 assert.ok(/Live 26-27 \(2 gp/.test(txt));
+assert.ok(/Day-To-Day/.test(txt) && /Ankle/.test(txt), 'injury badge and detail shown: ' + txt.slice(0, 200));
 await page.click('#closeModal');
 // toggle off: preseason numbers return, live line still shown
 await page.click('[data-view="strategy"]'); await page.click('#useLive');

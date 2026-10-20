@@ -41,20 +41,25 @@ If the player pool is wrong for a name, use *Players → Log a pick ... not in t
   your next pick" (ADP vs snake order) − flags. Confidence reflects the gap to the backups and risk flags.
 * Missing stats → z = 0 and the player is flagged `fallback`; no fabricated numbers.
 
-## Live NBA stats
+## Live NBA stats and injuries
 
-`scripts/fetch-stats.mjs` pulls 2026-27 per-game stats from the free NBA Stats API (stats.nba.com,
-`leaguedashplayerstats`, no key) into `data/live-stats.json`. The hosted page reads the same payload from its
-artifact database document `stats/latest` (written with the ArtifactData tool); other copies read the JSON file
-over HTTP. The model blends live and preseason lines: `(preseason × 25 + live × games) ÷ (25 + games)`, with
-percentages blended on makes and attempts, toggle under *Strategy → Live NBA stats*.
+`scripts/fetch-espn.mjs` pulls 2026-27 per-game stats for every player (ESPN `site.web.api.espn.com` byathlete API)
+and the league injury report (ESPN `site.api.espn.com` injuries API) into `data/live-stats.json`. The hosted page
+reads the same payload from its artifact database document `stats/latest` (written with the ArtifactData tool);
+other copies read the JSON file over HTTP. The model blends live and preseason lines
+`(preseason × 25 + live × games) ÷ (25 + games)` with percentages blended on makes and attempts (toggle under
+*Strategy → Live NBA stats*), shows injury badges (OUT / GTD with return date) on every card, and the recommender
+penalises OUT players.
 
-Requirements: the cloud environment's network policy must allow `stats.nba.com` (it was blocked on 20 Oct 2026).
-A daily scheduled task refreshes the data once that is allowed. Manual run:
+Network requirements for the cloud environment: allow `site.web.api.espn.com` and `site.api.espn.com`.
+`stats.nba.com` is allowed-but-useless from cloud addresses (it never answers), and `www.espn.com` sits behind a
+bot challenge; `scripts/fetch-stats.mjs` (NBA Stats API) is kept for local use only.
+A daily scheduled task ("Daily NBA live stats refresh", 3:47pm Sydney) runs the ESPN fetcher, commits the JSON and
+writes the db document. Manual run:
 
 ```
-node scripts/fetch-stats.mjs                      # writes data/live-stats.json
-node scripts/fetch-stats.mjs --fixture test/fixtures/nba-stats-sample.json   # offline test
+node scripts/fetch-espn.mjs                                     # live
+node scripts/fetch-espn.mjs --stats-fixture test/fixtures/espn-stats-sample.json --injury-fixture test/fixtures/espn-injuries-sample.json
 ```
 
 ## Yahoo integration

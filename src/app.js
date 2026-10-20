@@ -63,8 +63,13 @@ function setState(next, { undoable = true } = {}) { if (undoable) history.push(s
 
 function valued() {
   const weights = {}; for (const k of state.punts || []) weights[k] = 0;
-  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25 }).players : PLAYERS;
+  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25, injuries: liveData.injuries || {} }).players : PLAYERS;
   return E.computeValues(base, { gpWeight: state.gpWeight !== false, weights });
+}
+function injuryBadge(p) {
+  if (!p.injury) return '';
+  const st = String(p.injury.status || '').toLowerCase(); const cls = /out/.test(st) && !/doubt/.test(st) ? 'inj-out' : /doubt/.test(st) ? 'inj-out' : 'inj-gtd';
+  return `<span class="inj ${cls}" title="${esc(p.injury.comment || '')}">${esc(p.injury.status || 'INJ')}${p.injury.returnDate ? ' → ' + esc(p.injury.returnDate) : ''}</span>`;
 }
 function liveLine(p) {
   if (!p.live) return '';
@@ -158,7 +163,7 @@ function candCard(cnd, c, { primary = false } = {}) {
   return `<div class="cand ${primary ? 'primary' : ''}">
     <div class="cand-top">
       <div>
-        <div class="cand-name">${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></div>
+        <div class="cand-name">${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span> ${injuryBadge(p)}</div>
         <div class="muted small">Model #${p.modelRank}${typeof p.adp === 'number' ? ` · ADP ~${p.adp}` : ' · ADP n/a'}${cnd.likelyGone === true ? ' · <b>likely gone before your next pick</b>' : cnd.likelyGone === false ? ' · may still be there next pick' : ''}</div>
       </div>
       <div class="cand-actions">
@@ -365,7 +370,7 @@ function rosterPanel(c) {
   const a = E.assignRoster(c.roster);
   const prof = c.rec.profile;
   return `<div class="label">YOUR ROSTER (${c.roster.length}/${E.ROSTER_SIZE})</div>
-    <div class="roster">${a.assignments.map(x => `<div class="rslot ${x.player ? 'filled' : ''}"><span class="rs">${x.slot}</span><span>${x.player ? esc(x.player.name) : '<span class="muted">open</span>'}</span></div>`).join('')}</div>
+    <div class="roster">${a.assignments.map(x => `<div class="rslot ${x.player ? 'filled' : ''}"><span class="rs">${x.slot}</span><span>${x.player ? esc(x.player.name) + ' ' + injuryBadge(x.player) : '<span class="muted">open</span>'}</span></div>`).join('')}</div>
     <div class="label">CATEGORY BALANCE (sum of z)</div>
     <div class="bars">${E.CATS.map(k => { const v = prof[k.key] || 0; const w = Math.min(100, Math.abs(v) / 6 * 100); return `<div class="bar"><span class="bl">${k.label}</span><div class="bt"><div class="bf ${v >= 0 ? 'pos' : 'neg'} ${state.punts.includes(k.key) ? 'punt' : ''}" style="width:${w}%"></div></div><span class="bv">${v >= 0 ? '+' : ''}${v.toFixed(1)}</span></div>`; }).join('')}</div>`;
 }
@@ -388,7 +393,7 @@ function playersView(c) {
     </div>
   </section>
   <section class="list">${list.slice(0, 150).map(p => `<div class="prow ${gone.has(p.id) ? 'gone' : ''}">
-      <div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span></div>
+      <div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span> ${injuryBadge(p)}</div>
       <div class="small muted">${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}${p.risk ? ' · ⚠' : ''} · ${p.value.toFixed(1)}${p.live ? ` · <span class="live">live ${p.live.gp} gp: ${p.live.pts}/${p.live.reb}/${p.live.ast}</span>` : ''}</div></div>
       ${gone.has(p.id) ? '<span class="muted small">drafted</span>' : `<div class="cand-actions"><button class="btn-primary btn-sm" data-draft-me="${p.id}">ME</button><button class="btn-ghost btn-sm" data-draft-other="${p.id}">Taken</button></div>`}
     </div>`).join('') || '<p class="muted card">No match. Player not in the pool? Draft the pick as "Unknown" below.</p>'}
@@ -413,7 +418,7 @@ function strategyView(c) {
   </section>
   <section class="card">
     <h2>Live NBA stats</h2>
-    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
+    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}${liveData.injuries ? ` · injuries listed: ${Object.keys(liveData.injuries).length}` : ' · no injury report in payload'}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
     <label class="row"><span>Blend live stats into projections (K = 25 games)</span><input type="checkbox" id="useLive" ${state.useLive !== false ? 'checked' : ''}/></label>
     <div class="small muted">Blended = (preseason × 25 + live × games) ÷ (25 + games). Percentages blend on makes and attempts. Unmatched players keep their preseason line.</div>
   </section>
@@ -451,7 +456,8 @@ function strategyView(c) {
 function detailModal(c) {
   const p = c.byId[detailId]; if (!p) return '';
   return `<div class="modal" id="modal"><div class="modal-card">
-    <h2>${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></h2>
+    <h2>${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span> ${injuryBadge(p)}</h2>
+    ${p.injury ? `<p class="small flag">${esc(p.injury.status || '')}${p.injury.type ? ' · ' + esc(p.injury.type) : ''}${p.injury.detail ? ' · ' + esc(p.injury.detail) : ''}${p.injury.returnDate ? ' · est. return ' + esc(p.injury.returnDate) : ''}${p.injury.comment ? '<br>' + esc(p.injury.comment) : ''}</p>` : ''}
     <div class="chips">${catChips(p, { punts: state.punts })}</div>
     <p class="small">${esc(statLine(p))}</p>
     ${p.live ? `<p class="small live">${esc(liveLine(p))}</p>` : ''}
