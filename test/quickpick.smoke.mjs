@@ -28,7 +28,7 @@ await page.addInitScript(() => {
 await page.goto('file://' + resolve('dist/index.html'));
 await page.click('[data-slot="5"]'); await page.click('#startDraft');
 await page.waitForSelector('#shotInput', { state: 'attached' });
-assert.ok(await page.$('label[for=shotInput]'), 'quick pick button visible when images are supported');
+assert.ok(await page.$('#shotBtn'), 'quick pick button visible when images are supported');
 
 const upload = async (shot) => {
   await page.evaluate(s => window.__shots.push(s), shot);
