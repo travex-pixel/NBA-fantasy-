@@ -1,0 +1,11 @@
+import { chromium } from 'playwright-core'; import { resolve } from 'node:path'; import { readFileSync } from 'node:fs';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+const page = await b.newPage({ viewport: { width: 390, height: 844 } });
+await page.addInitScript(() => { window.__shots=[{screen:'draft_results',round:1,pick:2,partial:false,players:[{name:'Nikola Jokic',status:'drafted',pick:1}]}]; const sample=async()=>({text:''}); sample.json=async(i,o)=>{window.__got=o.images[0].size;return window.__shots.shift();}; sample.limits=async()=>({maxPromptBytes:1,images:{maxCount:1,maxInputBytes:1,mediaTypes:['image/png']}}); window.claude={use:async n=>n==='sample'?sample:null}; });
+await page.goto('file://' + resolve('/home/user/NBA-fantasy-/dist/index.html'));
+await page.click('[data-slot="2"]'); await page.click('#startDraft'); await page.waitForSelector('#pasteBox');
+const png = readFileSync('/home/user/NBA-fantasy-/dist/screenshot-draft.png');
+await page.evaluate(async (bytes) => { const f = new File([new Uint8Array(bytes)], 's.png', { type: 'image/png' }); const dt = new DataTransfer(); dt.items.add(f); const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }); document.getElementById('pasteBox').dispatchEvent(ev); }, [...png]);
+await page.waitForSelector('.qp-out', { timeout: 5000 });
+console.log('paste path OK, bytes sent:', await page.evaluate(() => window.__got), '| proposals:', /Apply 1 update/.test(await page.textContent('.qp')));
+await b.close();

@@ -193,7 +193,8 @@ function quickPickCard(c) {
   if (!vision.checked) body = '<div class="small muted">Checking whether screenshot reading is available in this view…</div>';
   else if (!canRead) body = `<div class="small flag">Screenshot reading is not available in this copy of the app${vision.sample ? ' (images not permitted here)' : ''}. Fallback: send the screenshot to Claude in the chat and paste the names into the TAKEN box below, or tap Taken in the Players tab.</div>`;
   else body = `<button class="btn-primary big file-btn" id="shotBtn" type="button">📷 QUICK PICK FROM SCREENSHOT</button>
-    <div class="small muted" style="margin-top:6px">If the button does nothing, use this picker:</div>
+    <div class="small muted" style="margin-top:6px">If the button does nothing: copy the screenshot (Photos → Share → Copy, or tap it in the keyboard's clipboard bar), then long-press the box below and Paste.</div>
+    <div id="pasteBox" class="paste-box" contenteditable="true" inputmode="none" aria-label="Paste screenshot here">Long-press here → Paste screenshot</div>
     <input type="file" id="shotInput" accept="${esc(vision.accept)}" class="file-input" />
     <div class="small muted">Yahoo draft room screenshot (Players list, Draft Results or My Team). Claude reads it; nothing is logged until you confirm.</div>`;
   if (vision.checked) body = `<div class="small muted">Status: ${canRead ? 'screenshot reading ready' : vision.sample ? 'Claude reachable but images not permitted' : 'no Claude runtime in this view'}</div>` + body;
@@ -508,6 +509,13 @@ function bind(c) {
   const uo = $('#unknownOther'); if (uo) uo.onclick = () => ask({ text: 'Player name (not in the pool) taken by the team on the clock:', input: 'text', placeholder: 'e.g. Jaden Ivey', buttons: [{ label: 'Log pick', primary: true, onClick: name => { if (!name) return; const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); dialog = null; try { setState(E.draftPlayer(state, id)); } catch (e) { notify(e.message); } } }, { label: 'Cancel' }] });
   document.querySelectorAll('[data-dlg]').forEach(b => b.onclick = () => { const d = dialog; const btn = d.buttons[+b.dataset.dlg]; const v = $('#dlgInput')?.value; dialog = null; if (btn.onClick) btn.onClick(v); if (dialog === null) render(); });
   const si = $('#shotInput'); if (si) si.onchange = () => { const f = si.files && si.files[0]; if (f) readScreenshot(f); };
+  const pb = $('#pasteBox'); if (pb) {
+    const fromItems = (dt) => { if (!dt) return null; for (const f of dt.files || []) if (f.type.startsWith('image/')) return f; for (const it of dt.items || []) if (it.kind === 'file' && it.type.startsWith('image/')) return it.getAsFile(); return null; };
+    pb.onpaste = e => { const f = fromItems(e.clipboardData); if (f) { e.preventDefault(); readScreenshot(f); } };
+    pb.oninput = () => { const img = pb.querySelector('img'); if (img && /^data:image\//.test(img.src)) { const [meta, b64] = img.src.split(','); const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); readScreenshot(new Blob([u8], { type: meta.slice(5).split(';')[0] })); } else if (img) { notify('Pasted image could not be read here. Try Photos → Share → Copy, then paste again.'); } pb.textContent = 'Long-press here → Paste screenshot'; };
+    pb.onfocus = () => { if (pb.textContent.startsWith('Long-press')) pb.textContent = ''; };
+    pb.onblur = () => { if (!pb.textContent.trim()) pb.textContent = 'Long-press here → Paste screenshot'; };
+  }
   const sb = $('#shotBtn'); if (sb) sb.onclick = () => { const i = $('#shotInput'); if (i) i.click(); else notify('Picker not ready yet'); };
   const sc = $('#shotCancel'); if (sc) sc.onclick = () => shot.ctl?.abort();
   const rr = $('#qpReread'); if (rr) rr.onclick = () => readScreenshot(shot.file, { careful: true });
