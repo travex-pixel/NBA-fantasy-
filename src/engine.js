@@ -366,3 +366,41 @@ export function undoLastPick(state) {
   if (!state.picks.length) return state;
   return { ...state, picks: state.picks.slice(0, -1) };
 }
+
+// ---------- Live stats blending ----------
+/**
+ * Attach live 2026-27 per-game stats to pool players (matched by normalised name) and produce a
+ * blended projection: blended = (preseason * K + live * gp) / (K + gp). K = how many games the
+ * preseason estimate is "worth"; with K=25 a player with 25 games played is weighted 50/50.
+ * Percentages are blended on made/attempted volume so a 3-of-4 night cannot swing FG% much.
+ * Returns NEW player objects; originals are untouched. Players without a live match keep their
+ * preseason line and have live = null. Nothing is invented for missing live fields.
+ */
+export function applyLiveStats(players, liveMap, opts = {}) {
+  const K = opts.k ?? 25;
+  const use = opts.use ?? true;
+  const idx = new Map();
+  for (const [name, row] of Object.entries(liveMap || {})) idx.set(normaliseName(name), row);
+  let matched = 0;
+  const out = players.map(p => {
+    const live = idx.get(normaliseName(p.name)) || null;
+    if (!live || !(live.gp > 0)) return { ...p, live: null, preseason: p.preseason || null };
+    matched++;
+    const gp = live.gp;
+    const w = K / (K + gp), v = gp / (K + gp);
+    const pre = p.preseason || { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tpm: p.tpm, fgp: p.fgp, fga: p.fga, ftp: p.ftp, fta: p.fta, tov: p.tov, gp: p.gp };
+    if (!use) return { ...p, ...pre, live, preseason: pre };
+    const b = {};
+    for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) b[k] = typeof live[k] === 'number' ? +(pre[k] * w + live[k] * v).toFixed(2) : pre[k];
+    // volume-weighted percentage blend
+    const fga = typeof live.fga === 'number' ? pre.fga * w + live.fga * v : pre.fga;
+    const fta = typeof live.fta === 'number' ? pre.fta * w + live.fta * v : pre.fta;
+    const fgm = pre.fgp * pre.fga * w + (typeof live.fgm === 'number' ? live.fgm : pre.fgp * pre.fga) * v;
+    const ftm = pre.ftp * pre.fta * w + (typeof live.ftm === 'number' ? live.ftm : pre.ftp * pre.fta) * v;
+    b.fga = +fga.toFixed(2); b.fta = +fta.toFixed(2);
+    b.fgp = fga > 0 ? +(fgm / fga).toFixed(3) : pre.fgp;
+    b.ftp = fta > 0 ? +(ftm / fta).toFixed(3) : pre.ftp;
+    return { ...p, ...b, live, preseason: pre };
+  });
+  return { players: out, matched, unmatched: players.length - matched };
+}

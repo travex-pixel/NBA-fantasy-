@@ -186,3 +186,27 @@ test('IL-type players (long-term out) carry a risk flag the recommender surfaces
   assert.ok(butler.flags.some(f => /OUT/i.test(f)));
   assert.ok(butler.flags.some(f => /games/.test(f)));
 });
+
+test('live stats blend: name matching with diacritics, volume-weighted %, K weighting, no invention', async () => {
+  const { applyLiveStats } = await import('../src/engine.js');
+  const pool = [
+    { id: 'jokic', name: 'Nikola Jokic', positions: ['C'], pts: 27.5, reb: 12.5, ast: 10.5, stl: 1.4, blk: 0.7, tpm: 1.8, fgp: .570, fga: 18.5, ftp: .820, fta: 7.5, tov: 3.3, gp: 70 },
+    { id: 'x', name: 'Nobody Here', positions: ['PG'], pts: 10, reb: 2, ast: 2, stl: 1, blk: 0, tpm: 1, fgp: .45, fga: 8, ftp: .8, fta: 2, tov: 1, gp: 70 },
+  ];
+  const live = { 'Nikola Jokić': { gp: 25, pts: 35, reb: 12.5, ast: 10.5, stl: 1.4, blk: 0.7, tpm: 1.8, fgm: 2, fga: 2, ftm: 0, fta: 0, tov: 3.3 } };
+  const r = applyLiveStats(pool, live, { k: 25 });
+  assert.equal(r.matched, 1); assert.equal(r.unmatched, 1);
+  const j = r.players.find(p => p.id === 'jokic');
+  assert.equal(j.pts, 31.25, '50/50 blend at gp == K');
+  assert.ok(j.fgp > .57 && j.fgp < .62, 'a 2-of-2 live line on tiny volume barely moves FG%: ' + j.fgp);
+  assert.equal(j.ftp, .82, 'no live FTA means FT% unchanged');
+  assert.ok(j.live && j.preseason.pts === 27.5);
+  const x = r.players.find(p => p.id === 'x');
+  assert.equal(x.live, null); assert.equal(x.pts, 10);
+  // use:false keeps preseason numbers but still attaches live for display
+  const off = applyLiveStats(pool, live, { use: false }).players.find(p => p.id === 'jokic');
+  assert.equal(off.pts, 27.5); assert.ok(off.live);
+  // idempotent: applying again to already-blended players re-blends from preseason, not from the blend
+  const again = applyLiveStats(r.players, live, { k: 25 }).players.find(p => p.id === 'jokic');
+  assert.equal(again.pts, 31.25);
+});

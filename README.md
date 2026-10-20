@@ -41,6 +41,22 @@ If the player pool is wrong for a name, use *Players → Log a pick ... not in t
   your next pick" (ADP vs snake order) − flags. Confidence reflects the gap to the backups and risk flags.
 * Missing stats → z = 0 and the player is flagged `fallback`; no fabricated numbers.
 
+## Live NBA stats
+
+`scripts/fetch-stats.mjs` pulls 2026-27 per-game stats from the free NBA Stats API (stats.nba.com,
+`leaguedashplayerstats`, no key) into `data/live-stats.json`. The hosted page reads the same payload from its
+artifact database document `stats/latest` (written with the ArtifactData tool); other copies read the JSON file
+over HTTP. The model blends live and preseason lines: `(preseason × 25 + live × games) ÷ (25 + games)`, with
+percentages blended on makes and attempts, toggle under *Strategy → Live NBA stats*.
+
+Requirements: the cloud environment's network policy must allow `stats.nba.com` (it was blocked on 20 Oct 2026).
+A daily scheduled task refreshes the data once that is allowed. Manual run:
+
+```
+node scripts/fetch-stats.mjs                      # writes data/live-stats.json
+node scripts/fetch-stats.mjs --fixture test/fixtures/nba-stats-sample.json   # offline test
+```
+
 ## Yahoo integration
 
 **Not connected.** Yahoo's Fantasy API requires a registered OAuth 2.0 app (client id/secret, redirect URI)

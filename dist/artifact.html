@@ -66,6 +66,8 @@
   button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #8fc1ff; outline-offset:2px; }
   .paste-box { border:2px dashed var(--accent); border-radius:12px; padding:18px 12px; text-align:center; font-weight:700; color:var(--accent); min-height:64px; margin:8px 0; background:#0e1627; }
   .paste-box img { max-width:100%; }
+  .live { color:#7fd8ff; }
+  code { background:#0e1627; padding:1px 5px; border-radius:4px; }
   .file-input { margin:6px 0; padding:10px; background:#0e1627; }
   .file-btn { display:flex; align-items:center; justify-content:center; text-align:center; }
   .qp { border-color:#3b4f80; }
@@ -452,6 +454,44 @@ function undoLastPick(state) {
   return { ...state, picks: state.picks.slice(0, -1) };
 }
 
+// ---------- Live stats blending ----------
+/**
+ * Attach live 2026-27 per-game stats to pool players (matched by normalised name) and produce a
+ * blended projection: blended = (preseason * K + live * gp) / (K + gp). K = how many games the
+ * preseason estimate is "worth"; with K=25 a player with 25 games played is weighted 50/50.
+ * Percentages are blended on made/attempted volume so a 3-of-4 night cannot swing FG% much.
+ * Returns NEW player objects; originals are untouched. Players without a live match keep their
+ * preseason line and have live = null. Nothing is invented for missing live fields.
+ */
+function applyLiveStats(players, liveMap, opts = {}) {
+  const K = opts.k ?? 25;
+  const use = opts.use ?? true;
+  const idx = new Map();
+  for (const [name, row] of Object.entries(liveMap || {})) idx.set(normaliseName(name), row);
+  let matched = 0;
+  const out = players.map(p => {
+    const live = idx.get(normaliseName(p.name)) || null;
+    if (!live || !(live.gp > 0)) return { ...p, live: null, preseason: p.preseason || null };
+    matched++;
+    const gp = live.gp;
+    const w = K / (K + gp), v = gp / (K + gp);
+    const pre = p.preseason || { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tpm: p.tpm, fgp: p.fgp, fga: p.fga, ftp: p.ftp, fta: p.fta, tov: p.tov, gp: p.gp };
+    if (!use) return { ...p, ...pre, live, preseason: pre };
+    const b = {};
+    for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) b[k] = typeof live[k] === 'number' ? +(pre[k] * w + live[k] * v).toFixed(2) : pre[k];
+    // volume-weighted percentage blend
+    const fga = typeof live.fga === 'number' ? pre.fga * w + live.fga * v : pre.fga;
+    const fta = typeof live.fta === 'number' ? pre.fta * w + live.fta * v : pre.fta;
+    const fgm = pre.fgp * pre.fga * w + (typeof live.fgm === 'number' ? live.fgm : pre.fgp * pre.fga) * v;
+    const ftm = pre.ftp * pre.fta * w + (typeof live.ftm === 'number' ? live.ftm : pre.ftp * pre.fta) * v;
+    b.fga = +fga.toFixed(2); b.fta = +fta.toFixed(2);
+    b.fgp = fga > 0 ? +(fgm / fga).toFixed(3) : pre.fgp;
+    b.ftp = fta > 0 ? +(ftm / fta).toFixed(3) : pre.ftp;
+    return { ...p, ...b, live, preseason: pre };
+  });
+  return { players: out, matched, unmatched: players.length - matched };
+}
+
 // Player pool for the 2026-27 season — Worldwide League draft assistant.
 //
 // HOW TO READ THIS FILE (honesty notes):
@@ -691,7 +731,7 @@ const SOURCES = [
   { title: 'Yahoo Fantasy Sports API', url: 'https://sports.yahoo.com/developer/', status: 'OAuth 2.0 with registered app (client id/secret + redirect URI) and signed API agreement required; no credentials exist in this environment, so NO live integration is implemented' },
 ];
 
-const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick };
+const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick, applyLiveStats };
 // UI layer — vanilla JS, mobile-first. All logic lives in engine.js.
 
 
@@ -711,6 +751,27 @@ let detailId = null;
 // --- Screenshot quick pick (uses the artifact runtime's `sample` capability; absent elsewhere) ---
 let shot = { status: 'idle' }; // idle | reading | ready | error ; ready: { parsed, proposals, conflicts, unmatched, ambiguous, rec, pickNote }
 let vision = { checked: false, sample: null, images: false };
+// --- Live NBA stats (written by scripts/fetch-stats.mjs; hosted page reads the artifact db doc stats/latest,
+//     other copies read ./data/live-stats.json). Nothing is shown unless a real payload loads. ---
+let liveData = null; let liveStatus = 'not loaded';
+async function loadLiveStats() {
+  try {
+    if (window.claude && typeof window.claude.use === 'function') {
+      const db = await window.claude.use('db');
+      if (db) {
+        const snap = await db.doc('stats/latest').get();
+        if (snap.exists) { liveData = snap.data(); liveStatus = 'artifact db'; render(); return; }
+        liveStatus = 'no stats document yet'; render(); return;
+      }
+    }
+    if (location.protocol !== 'file:') {
+      const res = await fetch('./data/live-stats.json', { cache: 'no-store' });
+      if (res.ok) { const j = await res.json(); if (j && j.players) { liveData = j; liveStatus = 'data/live-stats.json'; render(); return; } }
+      liveStatus = 'data/live-stats.json not found';
+    } else liveStatus = 'unavailable from a local file';
+  } catch (e) { liveStatus = 'failed to load (' + (e?.code || e?.message || 'error') + ')'; }
+  render();
+}
 async function detectVision() {
   try {
     if (!window.claude || typeof window.claude.use !== 'function') { vision = { checked: true, sample: null, images: false }; return; }
@@ -735,7 +796,13 @@ function setState(next, { undoable = true } = {}) { if (undoable) history.push(s
 
 function valued() {
   const weights = {}; for (const k of state.punts || []) weights[k] = 0;
-  return E.computeValues(PLAYERS, { gpWeight: state.gpWeight !== false, weights });
+  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25 }).players : PLAYERS;
+  return E.computeValues(base, { gpWeight: state.gpWeight !== false, weights });
+}
+function liveLine(p) {
+  if (!p.live) return '';
+  const l = p.live; const fg = l.fga ? (100 * l.fgm / l.fga).toFixed(1) : '-'; const ft = l.fta ? (100 * l.ftm / l.fta).toFixed(1) : '-';
+  return `Live 26-27 (${l.gp} gp, ${l.min} min): ${l.pts} pts · ${l.reb} reb · ${l.ast} ast · ${l.stl} st · ${l.blk} blk · ${l.tpm} 3pm · FG ${fg}% · FT ${ft}% · ${l.tov} to`;
 }
 
 function ctx() {
@@ -816,7 +883,7 @@ function catChips(p, { punts = [] } = {}) {
 }
 
 function statLine(p) {
-  return `${p.pts} pts · ${p.reb} reb · ${p.ast} ast · ${p.stl} st · ${p.blk} blk · ${p.tpm} 3pm · FG ${(p.fgp * 100).toFixed(1)}% (${p.fga}) · FT ${(p.ftp * 100).toFixed(1)}% (${p.fta}) · ${p.tov} to · ~${p.gp} gp`;
+  return `${p.live && state.useLive !== false ? 'Blended proj: ' : ''}${p.pts} pts · ${p.reb} reb · ${p.ast} ast · ${p.stl} st · ${p.blk} blk · ${p.tpm} 3pm · FG ${(p.fgp * 100).toFixed(1)}% (${p.fga}) · FT ${(p.ftp * 100).toFixed(1)}% (${p.fta}) · ${p.tov} to · ~${p.gp} gp`;
 }
 
 function candCard(cnd, c, { primary = false } = {}) {
@@ -839,7 +906,7 @@ function candCard(cnd, c, { primary = false } = {}) {
       <div class="small">Roster fit: ${fitText(cnd, c)}</div>
       ${cnd.flags.length ? `<div class="flag">⚠ ${cnd.flags.map(esc).join(' · ')}</div>` : '<div class="small ok">No major risk flag</div>'}
       ${cnd.adpNote ? `<div class="small">${esc(cnd.adpNote)}</div>` : '<div class="small muted">ADP: no reliable number for this player</div>'}
-      <details class="small"><summary>Details</summary><div>${esc(statLine(p))}</div>${p.note ? `<div>${esc(p.note)}</div>` : ''}<div class="muted">Score ${cnd.score.toFixed(2)} (9-cat z ${cnd.baseZ.toFixed(2)})</div></details>
+      <details class="small"><summary>Details</summary><div>${esc(statLine(p))}</div>${p.live ? `<div class="live">${esc(liveLine(p))}</div>` : ''}${p.note ? `<div>${esc(p.note)}</div>` : ''}<div class="muted">Score ${cnd.score.toFixed(2)} (9-cat z ${cnd.baseZ.toFixed(2)})</div></details>
     ` : `<div class="chips">${catChips(p, { punts: state.punts })}</div>${cnd.flags.length ? `<div class="flag small">⚠ ${cnd.flags.map(esc).join(' · ')}</div>` : ''}`}
   </div>`;
 }
@@ -1055,7 +1122,7 @@ function playersView(c) {
   </section>
   <section class="list">${list.slice(0, 150).map(p => `<div class="prow ${gone.has(p.id) ? 'gone' : ''}">
       <div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span></div>
-      <div class="small muted">${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}${p.risk ? ' · ⚠' : ''} · ${p.value.toFixed(1)}</div></div>
+      <div class="small muted">${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}${p.risk ? ' · ⚠' : ''} · ${p.value.toFixed(1)}${p.live ? ` · <span class="live">live ${p.live.gp} gp: ${p.live.pts}/${p.live.reb}/${p.live.ast}</span>` : ''}</div></div>
       ${gone.has(p.id) ? '<span class="muted small">drafted</span>' : `<div class="cand-actions"><button class="btn-primary btn-sm" data-draft-me="${p.id}">ME</button><button class="btn-ghost btn-sm" data-draft-other="${p.id}">Taken</button></div>`}
     </div>`).join('') || '<p class="muted card">No match. Player not in the pool? Draft the pick as "Unknown" below.</p>'}
     <div class="card"><button class="btn-ghost" id="unknownOther">Log a pick by another team for a player not in this list</button></div>
@@ -1076,6 +1143,12 @@ function strategyView(c) {
     <div class="row"><span>Punt (set weight to 0)</span><div class="chips">${E.CATS.map(puntBtn).join('')}</div></div>
     <div class="small muted">Punting is a tool, not a default. Only turn one on if your first 3-4 picks naturally point there (e.g. Giannis + Gobert/Kessler → punt FT%).</div>
     <button class="btn-ghost danger" id="reset">Reset draft (clear all picks)</button>
+  </section>
+  <section class="card">
+    <h2>Live NBA stats</h2>
+    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
+    <label class="row"><span>Blend live stats into projections (K = 25 games)</span><input type="checkbox" id="useLive" ${state.useLive !== false ? 'checked' : ''}/></label>
+    <div class="small muted">Blended = (preseason × 25 + live × games) ÷ (25 + games). Percentages blend on makes and attempts. Unmatched players keep their preseason line.</div>
   </section>
   <section class="card">
     <h2>Draft plan — 10-team 9-cat H2H</h2>
@@ -1114,6 +1187,7 @@ function detailModal(c) {
     <h2>${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></h2>
     <div class="chips">${catChips(p, { punts: state.punts })}</div>
     <p class="small">${esc(statLine(p))}</p>
+    ${p.live ? `<p class="small live">${esc(liveLine(p))}</p>` : ''}
     <p class="small">Model rank #${p.modelRank} · value ${p.value.toFixed(2)} · ${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}</p>
     ${p.risk ? `<p class="flag">⚠ ${esc(p.risk)}</p>` : ''}${p.note ? `<p class="small">${esc(p.note)}</p>` : ''}
     <div class="row-btns">${E.draftedIds(state).has(p.id) ? '' : `<button class="btn-primary" data-draft-me="${p.id}">Draft ME</button><button class="btn-ghost" data-draft-other="${p.id}">Taken</button>`}<button class="btn-ghost" data-remove="${p.id}">Not in pool</button><button class="btn-ghost" id="closeModal">Close</button></div>
@@ -1197,6 +1271,7 @@ function bind(c) {
   const tf = $('#takenForm'); if (tf) tf.onsubmit = e => { e.preventDefault(); const v = $('#takenInput').value; processTaken(v); };
   const s = $('#search'); if (s) { s.oninput = () => { search = s.value; const pos = s.selectionStart; render(); const n = $('#search'); n.focus(); n.setSelectionRange(pos, pos); }; }
   const ss = $('#slotSel'); if (ss) ss.onchange = () => setState({ ...state, mySlot: +ss.value }, { undoable: false });
+  const ul = $('#useLive'); if (ul) ul.onchange = () => setState({ ...state, useLive: ul.checked }, { undoable: false });
   const gp = $('#gpw'); if (gp) gp.onchange = () => setState({ ...state, gpWeight: gp.checked }, { undoable: false });
   const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });
   const uo = $('#unknownOther'); if (uo) uo.onclick = () => ask({ text: 'Player name (not in the pool) taken by the team on the clock:', input: 'text', placeholder: 'e.g. Jaden Ivey', buttons: [{ label: 'Log pick', primary: true, onClick: name => { if (!name) return; const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); dialog = null; try { setState(E.draftPlayer(state, id)); } catch (e) { notify(e.message); } } }, { label: 'Cancel' }] });
@@ -1231,6 +1306,7 @@ function tick() {
 
 render();
 detectVision();
+loadLiveStats();
 window.__war = { analyseShot: (parsed) => analyseShot(parsed, ctx()), getState: () => state, setShot: (v) => { shot = v; render(); } };
 
 </script>

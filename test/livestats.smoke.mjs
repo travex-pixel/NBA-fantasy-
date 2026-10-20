@@ -1,0 +1,33 @@
+// Hosted path: the page reads stats/latest from the artifact db (mocked here) and blends it into the model.
+import { chromium } from 'playwright-core';
+import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { normalise } from '../scripts/fetch-stats.mjs';
+const players = normalise(JSON.parse(readFileSync('test/fixtures/nba-stats-sample.json', 'utf8')));
+const doc = { source: 'fixture', season: '2026-27', fetchedAt: '2026-10-25T05:00:00Z', count: Object.keys(players).length, players };
+const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const errors = []; page.on('pageerror', e => errors.push(String(e))); page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+await page.addInitScript((d) => { const db = { doc: (path) => ({ get: async () => ({ exists: path === 'stats/latest', data: () => d }) }) }; window.claude = { use: async (n) => (n === 'db' ? db : null) }; }, doc);
+await page.goto('file://' + resolve('dist/index.html'));
+await page.click('[data-slot="3"]'); await page.click('#startDraft');
+await page.click('[data-view="strategy"]');
+await page.waitForFunction(() => /Source: fixture/.test(document.querySelector('.main').textContent));
+let txt = await page.textContent('.main');
+assert.ok(/matched to pool: 4/.test(txt), 'four fixture players matched (incl. Jokić with diacritic): ' + txt.match(/matched to pool: \d+/));
+await page.click('[data-view="players"]'); await page.fill('#search', 'edwards');
+await page.waitForFunction(() => /live 2 gp: 30.5\/5.5\/4.5/.test(document.querySelector('.list').textContent));
+await page.click('[data-detail="edwards"]');
+txt = await page.textContent('#modal');
+assert.ok(/Blended proj: 28\.7\d? pts/.test(txt), 'blended pts = (28.5*25 + 30.5*2)/27 ≈ 28.65: ' + txt.match(/Blended proj: [^·]+/));
+assert.ok(/Live 26-27 \(2 gp/.test(txt));
+await page.click('#closeModal');
+// toggle off: preseason numbers return, live line still shown
+await page.click('[data-view="strategy"]'); await page.click('#useLive');
+await page.click('[data-view="players"]'); await page.fill('#search', 'edwards'); await page.click('[data-detail="edwards"]');
+txt = await page.textContent('#modal');
+assert.ok(/^(?!.*Blended).*28\.5 pts/.test(txt.replace(/\n/g, ' ')), 'toggle off restores preseason 28.5');
+await browser.close();
+assert.deepEqual(errors, [], errors.join(' | '));
+console.log('Live stats smoke test passed');
