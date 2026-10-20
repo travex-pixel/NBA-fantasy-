@@ -3,6 +3,14 @@
 // Needs the environment to allow site.web.api.espn.com (stats) and site.api.espn.com (injuries).
 // Usage: node scripts/fetch-espn.mjs [--season 2027] [--stats-fixture f.json] [--injury-fixture f.json] [--out data/live-stats.json]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+
+// Node's built-in fetch ignores HTTPS_PROXY unless NODE_USE_ENV_PROXY=1 is set at startup (Node >= 22.21).
+// In the cloud environment every outbound request must go through that proxy, so re-exec ourselves with it set.
+if (process.env.HTTPS_PROXY && process.env.NODE_USE_ENV_PROXY !== '1' && !process.argv.includes('--no-reexec')) {
+  const r = spawnSync(process.execPath, process.argv.slice(1), { stdio: 'inherit', env: { ...process.env, NODE_USE_ENV_PROXY: '1' } });
+  process.exit(r.status ?? 1);
+}
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true] : []).filter(Boolean));
 const season = args.season || '2027'; // ESPN uses the season END year: 2026-27 => 2027
@@ -59,12 +67,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let statsPages, injJson, errors = [];
   if (args['stats-fixture']) statsPages = [JSON.parse(readFileSync(args['stats-fixture'], 'utf8'))];
   else { statsPages = []; for (let p = 1; p <= 3; p++) { const j = await getJson(STATS_URL(p)); statsPages.push(j); const pc = j?.pagination?.pages ?? 1; if (p >= pc) break; } }
-  const players = normaliseStats(statsPages);
+  let players = normaliseStats(statsPages); let statsNote = null;
+  // Guard against ESPN serving a previous season under the requested label (it does this before tip-off):
+  // no player can have more games played than days elapsed since opening night (21 Oct 2026) + 1.
+  const first = statsPages[0] || {};
+  const reqYear = first?.requestedSeason?.year ?? first?.season?.year ?? null;
+  const opening = Date.UTC(2026, 9, 21); const daysIn = Math.floor((Date.now() - opening) / 86400000) + 1;
+  const maxGp = Math.max(0, ...Object.values(players).map(r => r.gp || 0));
+  if (!args['stats-fixture'] && reqYear != null && String(reqYear) !== String(season)) { statsNote = `ESPN returned season ${reqYear}, not ${season} (2026-27 stats not available yet); stats omitted`; players = {}; }
+  else if (!args['stats-fixture'] && maxGp > Math.max(1, daysIn + 1)) { statsNote = `stats look stale: a player shows ${maxGp} games but only ${Math.max(0, daysIn)} day(s) of 2026-27 have been played; stats omitted`; players = {}; }
   let injuries = {};
   try { injJson = args['injury-fixture'] ? JSON.parse(readFileSync(args['injury-fixture'], 'utf8')) : await getJson(INJ_URL); injuries = normaliseInjuries(injJson); }
   catch (e) { errors.push('injuries: ' + e.message); }
-  const payload = { source: args['stats-fixture'] ? 'fixture' : 'ESPN site.web.api.espn.com byathlete (per game) + site.api.espn.com injuries', season: `${Number(season) - 1}-${String(season).slice(2)}`, fetchedAt: new Date().toISOString(), count: Object.keys(players).length, injuryCount: Object.keys(injuries).length, errors, players, injuries };
+  const payload = { source: args['stats-fixture'] ? 'fixture' : 'ESPN site.web.api.espn.com byathlete (per game) + site.api.espn.com injuries', season: `${Number(season) - 1}-${String(season).slice(2)}`, fetchedAt: new Date().toISOString(), count: Object.keys(players).length, injuryCount: Object.keys(injuries).length, statsNote, errors, players, injuries };
+  if (!payload.count && !payload.injuryCount) throw new Error('nothing usable fetched (no current-season stats, no injuries); not writing');
   mkdirSync('data', { recursive: true });
   writeFileSync(out, JSON.stringify(payload));
-  console.log(`wrote ${out}: ${payload.count} players, ${payload.injuryCount} injuries (${payload.source})${errors.length ? ' errors: ' + errors.join('; ') : ''}`);
+  console.log(`wrote ${out}: ${payload.count} players, ${payload.injuryCount} injuries (${payload.source})${statsNote ? ' note: ' + statsNote : ''}${errors.length ? ' errors: ' + errors.join('; ') : ''}`);
 }

@@ -1169,7 +1169,7 @@ function strategyView(c) {
   </section>
   <section class="card">
     <h2>Live NBA stats</h2>
-    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}${liveData.injuries ? ` · injuries listed: ${Object.keys(liveData.injuries).length}` : ' · no injury report in payload'}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
+    ${liveData ? `<div class="small">Source: ${esc(liveData.source)} · season ${esc(liveData.season)} · fetched ${esc(liveData.fetchedAt)} · ${liveData.count} players${liveData.statsNote ? ` · <span class="flag">${esc(liveData.statsNote)}</span>` : ''} · matched to pool: ${E.applyLiveStats(PLAYERS, liveData.players).matched}${liveData.injuries ? ` · injuries listed: ${Object.keys(liveData.injuries).length}` : ' · no injury report in payload'}</div>` : `<div class="small flag">No live stats loaded (${esc(liveStatus)}). Run <code>node scripts/fetch-stats.mjs</code> and publish the result; see README.</div>`}
     <label class="row"><span>Blend live stats into projections (K = 25 games)</span><input type="checkbox" id="useLive" ${state.useLive !== false ? 'checked' : ''}/></label>
     <div class="small muted">Blended = (preseason × 25 + live × games) ÷ (25 + games). Percentages blend on makes and attempts. Unmatched players keep their preseason line.</div>
   </section>
