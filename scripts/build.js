@@ -12,4 +12,7 @@ const js = `${engine}\n${data}\n${sources}\n${ns}\n${app}`;
 const html = readFileSync('index.html', 'utf8').replace('<script type="module" src="./src/app.js"></script>', `<script>\n${js.replace(/<\/script>/g, '<\\/script>')}\n</script>`);
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/index.html', html);
-console.log('dist/index.html', html.length, 'bytes');
+// Artifact variant: no document skeleton (the artifact host wraps it), same title/style/body/script.
+const inner = html.replace(/^[\s\S]*?<title>/, '<title>').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '');
+writeFileSync('dist/artifact.html', inner);
+console.log('dist/index.html', html.length, 'bytes; dist/artifact.html', inner.length, 'bytes');

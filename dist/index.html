@@ -5,22 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0b1220" />
 <title>CG Draft War Room</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
 <style>
-  :root { --bg:#0b1220; --card:#141d31; --card2:#1b2742; --text:#eef2ff; --muted:#9aa7c7; --accent:#ffb020; --accent-text:#1a1200; --good:#2fbf71; --bad:#ff5d5d; --line:#263454; }
+  :root { color-scheme:dark; --bg:#0b1220; --card:#141d31; --card2:#1b2742; --text:#eef2ff; --muted:#9aa7c7; --accent:#ffb020; --accent-text:#1a1200; --good:#2fbf71; --bad:#ff5d5d; --line:#263454; }
   * { box-sizing:border-box; }
   html,body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; -webkit-text-size-adjust:100%; }
-  #app { max-width:720px; margin:0 auto; padding-bottom:84px; }
-  .main { padding:0 12px; }
+  #app { max-width:720px; margin:0 auto; padding-bottom:84px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+  body::before { content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top, 0px); z-index:10; background:var(--bg); }
+  .main { padding:0; }
   h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:16px 0 8px; }
   .muted { color:var(--muted); } .small { font-size:13px; } .ok { color:var(--good); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin:12px 0; }
-  .hdr { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:2px solid var(--line); padding:8px 12px; }
+  .hdr { position:sticky; top:env(safe-area-inset-top, 0px); z-index:5; background:var(--bg); border-bottom:2px solid var(--line); padding:8px 0; }
   .hdr.mine { border-bottom-color:var(--accent); background:#1a1a0b; }
   .hdr-row { display:grid; grid-template-columns:1fr 1.2fr 1fr auto; gap:8px; align-items:center; }
   .hdr-k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   .hdr-v { font-size:18px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .timer { font-size:22px; font-weight:800; min-width:56px; text-align:right; } .timer.hot { color:var(--bad); }
-  .nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding:6px 6px calc(6px + env(safe-area-inset-bottom)); z-index:5; }
+  .nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding:6px max(6px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px)); z-index:5; }
   .nav-btn { flex:1; min-height:52px; margin:0 3px; border:0; border-radius:10px; background:transparent; color:var(--muted); font-size:15px; font-weight:700; }
   .nav-btn.on { background:var(--card2); color:var(--text); }
   button { font:inherit; cursor:pointer; touch-action:manipulation; }
@@ -55,15 +57,19 @@
   .bars { display:grid; gap:4px; } .bar { display:grid; grid-template-columns:40px 1fr 44px; gap:6px; align-items:center; font-size:13px; }
   .bt { background:#0e1627; height:12px; border-radius:6px; overflow:hidden; } .bf { height:100%; } .bf.pos { background:var(--good); } .bf.neg { background:var(--bad); } .bf.punt { opacity:.3; } .bv { text-align:right; color:var(--muted); }
   .ledger div { padding:5px 0; border-bottom:1px solid var(--line); font-size:14px; }
-  .list { margin:0 -12px; } .prow { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .list { margin:0; } .prow { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
   .prow.gone { opacity:.45; } .pinfo { flex:1; min-width:0; } .prow .cand-actions { flex-direction:row; }
-  .sticky-search { position:sticky; top:62px; z-index:4; }
+  .sticky-search { position:sticky; top:calc(62px + env(safe-area-inset-top, 0px)); z-index:4; }
   .slot-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; } .slot-btn { min-height:56px; font-size:20px; font-weight:800; border-radius:12px; border:1px solid var(--line); background:var(--card2); color:var(--text); }
   .slot-btn.on { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
   .row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:8px 0; } .row input, .row select { width:auto; min-width:120px; } .row input[type=checkbox] { width:28px; height:28px; min-height:0; }
   .compact { padding-left:18px; margin:4px 0; } .plan li { margin:8px 0; } .src li { margin:6px 0; word-break:break-word; } a { color:#8fc1ff; }
   .modal { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:20; display:flex; align-items:flex-end; }
   .modal-card { background:var(--card); border-radius:16px 16px 0 0; padding:16px; width:100%; max-height:85vh; overflow:auto; }
+  .toast { position:fixed; left:50%; bottom:calc(90px + env(safe-area-inset-bottom, 0px)); transform:translate(-50%, 20px); background:#ffd27a; color:#1a1200; padding:10px 14px; border-radius:10px; font-weight:700; max-width:92vw; opacity:0; transition:opacity .2s, transform .2s; z-index:30; pointer-events:none; }
+  .toast.show { opacity:1; transform:translate(-50%, 0); }
+  @media (prefers-reduced-motion: reduce) { .toast { transition:none; } }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #8fc1ff; outline-offset:2px; }
   details summary { cursor:pointer; color:var(--muted); padding:6px 0; }
   @media (min-width:520px) { .modal { align-items:center; } .modal-card { max-width:520px; border-radius:16px; } }
 </style>
@@ -697,6 +703,14 @@ let timerEnd = null; let timerHandle = null;
 let pendingAmbiguous = null; // { names: [], index, candidates }
 let playersFilter = 'avail';
 let detailId = null;
+let dialog = null; // in-page replacement for the browser dialogs the artifact viewer blocks: { text, input?, value?, buttons: [{label, primary, onClick(value)}] }
+function ask(d) { dialog = d; render(); }
+function notify(msg) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(notify._t); notify._t = setTimeout(() => el.classList.remove('show'), 4500);
+}
 
 function load() { try { const s = JSON.parse(localStorage.getItem(STORAGE_KEY)); return s && s.picks ? s : null; } catch { return null; } }
 function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
@@ -730,6 +744,7 @@ function render() {
     ${view !== 'setup' ? nav() : ''}
     ${detailId ? detailModal(c) : ''}
     ${pendingAmbiguous ? ambiguousModal() : ''}
+    ${dialog ? dialogModal() : ''}
   `;
   bind(c);
 }
@@ -940,6 +955,15 @@ function detailModal(c) {
   </div></div>`;
 }
 
+function dialogModal() {
+  const d = dialog;
+  return `<div class="modal"><div class="modal-card">
+    <p>${esc(d.text)}</p>
+    ${d.input ? `<input id="dlgInput" ${d.input === 'number' ? 'type="number" inputmode="numeric"' : ''} value="${esc(d.value ?? '')}" placeholder="${esc(d.placeholder ?? '')}" />` : ''}
+    <div class="row-btns">${d.buttons.map((b, i) => `<button class="${b.primary ? 'btn-primary' : 'btn-ghost'}" data-dlg="${i}">${esc(b.label)}</button>`).join('')}</div>
+  </div></div>`;
+}
+
 function ambiguousModal() {
   const a = pendingAmbiguous;
   return `<div class="modal"><div class="modal-card">
@@ -953,25 +977,19 @@ function ambiguousModal() {
 function draft(id, forMe) {
   const c = ctx();
   const onClock = c.onClock;
-  let next;
-  try {
-    if (forMe) {
-      if (!state.mySlot) { alert('Set your draft slot first (Strategy tab).'); return; }
-      // If it's not my turn, fill intermediate picks as "unknown" so the snake stays correct? No — ask.
-      if (onClock !== state.mySlot) {
-        if (!confirm(`It's slot ${onClock}'s pick (${state.teamNames[onClock - 1]}), not yours. Log this player to YOUR roster anyway (pick numbers may be off)?`)) return;
-        next = E.draftPlayer(state, id, { slot: state.mySlot });
-      } else next = E.draftPlayer(state, id);
-    } else {
-      next = E.draftPlayer(state, id, { slot: onClock === state.mySlot ? promptOtherSlot(onClock) : onClock });
+  const commit = (slot) => { try { const next = E.draftPlayer(state, id, slot ? { slot } : {}); detailId = null; dialog = null; setState(next); } catch (e) { notify(e.message); } };
+  if (forMe) {
+    if (!state.mySlot) { notify('Set your draft slot first (Strategy tab).'); return; }
+    if (onClock !== state.mySlot) {
+      ask({ text: `It's slot ${onClock}'s pick (${state.teamNames[onClock - 1]}), not yours. Log this player to YOUR roster anyway? Pick numbers may drift until you log the missing picks.`,
+        buttons: [{ label: 'Log to my roster', primary: true, onClick: () => commit(state.mySlot) }, { label: 'Cancel' }] });
+      return;
     }
-  } catch (e) { alert(e.message); return; }
-  if (next) { detailId = null; setState(next); }
-}
-function promptOtherSlot(onClock) {
-  // It's my turn but I'm marking someone else — most likely I mis-tracked; let the user choose.
-  const s = prompt(`It's YOUR pick (#${E.currentOverall(state)}). Which slot actually made this pick? (1-${state.numTeams})`, String(onClock));
-  const n = parseInt(s, 10); return Number.isInteger(n) && n >= 1 && n <= state.numTeams ? n : onClock;
+    commit();
+  } else if (onClock === state.mySlot) {
+    ask({ text: `It's YOUR pick (#${E.currentOverall(state)}). Which slot actually took this player? (1-${state.numTeams})`, input: 'number', value: onClock,
+      buttons: [{ label: 'Mark taken', primary: true, onClick: v => { const n = parseInt(v, 10); commit(Number.isInteger(n) && n >= 1 && n <= state.numTeams ? n : onClock); } }, { label: 'Cancel' }] });
+  } else commit(onClock);
 }
 
 function processTaken(text) {
@@ -992,7 +1010,7 @@ function runTakenQueue(names, i) {
     failures.push(all.match ? `${names[i]}: already drafted` : `${names[i]}: not found (use Players tab / "Not in pool")`);
   }
   history.push(state); save(); render();
-  if (failures.length) alert('Could not process:\n' + failures.join('\n'));
+  if (failures.length) notify('Could not process: ' + failures.join(' · '));
 }
 
 function bind(c) {
@@ -1006,7 +1024,7 @@ function bind(c) {
   document.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { detailId = null; setState({ ...state, removed: [...(state.removed || []), b.dataset.remove] }); });
   document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { playersFilter = b.dataset.filter; render(); });
   document.querySelectorAll('[data-punt]').forEach(b => b.onclick = () => { const k = b.dataset.punt; const p = state.punts.includes(k) ? state.punts.filter(x => x !== k) : [...state.punts, k]; setState({ ...state, punts: p }, { undoable: false }); });
-  document.querySelectorAll('[data-pick-amb]').forEach(b => b.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; try { state = E.draftPlayer(state, b.dataset.pickAmb); } catch (e) { alert(e.message); } runTakenQueue(a.names, a.index + 1); });
+  document.querySelectorAll('[data-pick-amb]').forEach(b => b.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; try { state = E.draftPlayer(state, b.dataset.pickAmb); } catch (e) { notify(e.message); } runTakenQueue(a.names, a.index + 1); });
   const sk = $('#skipAmb'); if (sk) sk.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; runTakenQueue(a.names, a.index + 1); };
   const cm = $('#closeModal'); if (cm) cm.onclick = () => { detailId = null; render(); };
   const md = $('#modal'); if (md) md.onclick = e => { if (e.target === md) { detailId = null; render(); } };
@@ -1015,8 +1033,9 @@ function bind(c) {
   const s = $('#search'); if (s) { s.oninput = () => { search = s.value; const pos = s.selectionStart; render(); const n = $('#search'); n.focus(); n.setSelectionRange(pos, pos); }; }
   const ss = $('#slotSel'); if (ss) ss.onchange = () => setState({ ...state, mySlot: +ss.value }, { undoable: false });
   const gp = $('#gpw'); if (gp) gp.onchange = () => setState({ ...state, gpWeight: gp.checked }, { undoable: false });
-  const rs = $('#reset'); if (rs) rs.onclick = () => { if (confirm('Clear ALL picks and start over?')) { history = []; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } };
-  const uo = $('#unknownOther'); if (uo) uo.onclick = () => { const name = prompt('Player name (not in pool) taken by the team on the clock:'); if (name) { const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); try { setState(E.draftPlayer(state, id)); } catch (e) { alert(e.message); } } };
+  const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });
+  const uo = $('#unknownOther'); if (uo) uo.onclick = () => ask({ text: 'Player name (not in the pool) taken by the team on the clock:', input: 'text', placeholder: 'e.g. Jaden Ivey', buttons: [{ label: 'Log pick', primary: true, onClick: name => { if (!name) return; const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); dialog = null; try { setState(E.draftPlayer(state, id)); } catch (e) { notify(e.message); } } }, { label: 'Cancel' }] });
+  document.querySelectorAll('[data-dlg]').forEach(b => b.onclick = () => { const d = dialog; const btn = d.buttons[+b.dataset.dlg]; const v = $('#dlgInput')?.value; dialog = null; if (btn.onClick) btn.onClick(v); if (dialog === null) render(); });
   const st = $('#startTimer'); if (st) st.onclick = () => { timerEnd = Date.now() + 60000; tick(); };
 }
 function tick() {

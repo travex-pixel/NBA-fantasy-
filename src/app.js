@@ -15,6 +15,14 @@ let timerEnd = null; let timerHandle = null;
 let pendingAmbiguous = null; // { names: [], index, candidates }
 let playersFilter = 'avail';
 let detailId = null;
+let dialog = null; // in-page replacement for the browser dialogs the artifact viewer blocks: { text, input?, value?, buttons: [{label, primary, onClick(value)}] }
+function ask(d) { dialog = d; render(); }
+function notify(msg) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(notify._t); notify._t = setTimeout(() => el.classList.remove('show'), 4500);
+}
 
 function load() { try { const s = JSON.parse(localStorage.getItem(STORAGE_KEY)); return s && s.picks ? s : null; } catch { return null; } }
 function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
@@ -48,6 +56,7 @@ function render() {
     ${view !== 'setup' ? nav() : ''}
     ${detailId ? detailModal(c) : ''}
     ${pendingAmbiguous ? ambiguousModal() : ''}
+    ${dialog ? dialogModal() : ''}
   `;
   bind(c);
 }
@@ -258,6 +267,15 @@ function detailModal(c) {
   </div></div>`;
 }
 
+function dialogModal() {
+  const d = dialog;
+  return `<div class="modal"><div class="modal-card">
+    <p>${esc(d.text)}</p>
+    ${d.input ? `<input id="dlgInput" ${d.input === 'number' ? 'type="number" inputmode="numeric"' : ''} value="${esc(d.value ?? '')}" placeholder="${esc(d.placeholder ?? '')}" />` : ''}
+    <div class="row-btns">${d.buttons.map((b, i) => `<button class="${b.primary ? 'btn-primary' : 'btn-ghost'}" data-dlg="${i}">${esc(b.label)}</button>`).join('')}</div>
+  </div></div>`;
+}
+
 function ambiguousModal() {
   const a = pendingAmbiguous;
   return `<div class="modal"><div class="modal-card">
@@ -271,25 +289,19 @@ function ambiguousModal() {
 function draft(id, forMe) {
   const c = ctx();
   const onClock = c.onClock;
-  let next;
-  try {
-    if (forMe) {
-      if (!state.mySlot) { alert('Set your draft slot first (Strategy tab).'); return; }
-      // If it's not my turn, fill intermediate picks as "unknown" so the snake stays correct? No — ask.
-      if (onClock !== state.mySlot) {
-        if (!confirm(`It's slot ${onClock}'s pick (${state.teamNames[onClock - 1]}), not yours. Log this player to YOUR roster anyway (pick numbers may be off)?`)) return;
-        next = E.draftPlayer(state, id, { slot: state.mySlot });
-      } else next = E.draftPlayer(state, id);
-    } else {
-      next = E.draftPlayer(state, id, { slot: onClock === state.mySlot ? promptOtherSlot(onClock) : onClock });
+  const commit = (slot) => { try { const next = E.draftPlayer(state, id, slot ? { slot } : {}); detailId = null; dialog = null; setState(next); } catch (e) { notify(e.message); } };
+  if (forMe) {
+    if (!state.mySlot) { notify('Set your draft slot first (Strategy tab).'); return; }
+    if (onClock !== state.mySlot) {
+      ask({ text: `It's slot ${onClock}'s pick (${state.teamNames[onClock - 1]}), not yours. Log this player to YOUR roster anyway? Pick numbers may drift until you log the missing picks.`,
+        buttons: [{ label: 'Log to my roster', primary: true, onClick: () => commit(state.mySlot) }, { label: 'Cancel' }] });
+      return;
     }
-  } catch (e) { alert(e.message); return; }
-  if (next) { detailId = null; setState(next); }
-}
-function promptOtherSlot(onClock) {
-  // It's my turn but I'm marking someone else — most likely I mis-tracked; let the user choose.
-  const s = prompt(`It's YOUR pick (#${E.currentOverall(state)}). Which slot actually made this pick? (1-${state.numTeams})`, String(onClock));
-  const n = parseInt(s, 10); return Number.isInteger(n) && n >= 1 && n <= state.numTeams ? n : onClock;
+    commit();
+  } else if (onClock === state.mySlot) {
+    ask({ text: `It's YOUR pick (#${E.currentOverall(state)}). Which slot actually took this player? (1-${state.numTeams})`, input: 'number', value: onClock,
+      buttons: [{ label: 'Mark taken', primary: true, onClick: v => { const n = parseInt(v, 10); commit(Number.isInteger(n) && n >= 1 && n <= state.numTeams ? n : onClock); } }, { label: 'Cancel' }] });
+  } else commit(onClock);
 }
 
 function processTaken(text) {
@@ -310,7 +322,7 @@ function runTakenQueue(names, i) {
     failures.push(all.match ? `${names[i]}: already drafted` : `${names[i]}: not found (use Players tab / "Not in pool")`);
   }
   history.push(state); save(); render();
-  if (failures.length) alert('Could not process:\n' + failures.join('\n'));
+  if (failures.length) notify('Could not process: ' + failures.join(' · '));
 }
 
 function bind(c) {
@@ -324,7 +336,7 @@ function bind(c) {
   document.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { detailId = null; setState({ ...state, removed: [...(state.removed || []), b.dataset.remove] }); });
   document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { playersFilter = b.dataset.filter; render(); });
   document.querySelectorAll('[data-punt]').forEach(b => b.onclick = () => { const k = b.dataset.punt; const p = state.punts.includes(k) ? state.punts.filter(x => x !== k) : [...state.punts, k]; setState({ ...state, punts: p }, { undoable: false }); });
-  document.querySelectorAll('[data-pick-amb]').forEach(b => b.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; try { state = E.draftPlayer(state, b.dataset.pickAmb); } catch (e) { alert(e.message); } runTakenQueue(a.names, a.index + 1); });
+  document.querySelectorAll('[data-pick-amb]').forEach(b => b.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; try { state = E.draftPlayer(state, b.dataset.pickAmb); } catch (e) { notify(e.message); } runTakenQueue(a.names, a.index + 1); });
   const sk = $('#skipAmb'); if (sk) sk.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; runTakenQueue(a.names, a.index + 1); };
   const cm = $('#closeModal'); if (cm) cm.onclick = () => { detailId = null; render(); };
   const md = $('#modal'); if (md) md.onclick = e => { if (e.target === md) { detailId = null; render(); } };
@@ -333,8 +345,9 @@ function bind(c) {
   const s = $('#search'); if (s) { s.oninput = () => { search = s.value; const pos = s.selectionStart; render(); const n = $('#search'); n.focus(); n.setSelectionRange(pos, pos); }; }
   const ss = $('#slotSel'); if (ss) ss.onchange = () => setState({ ...state, mySlot: +ss.value }, { undoable: false });
   const gp = $('#gpw'); if (gp) gp.onchange = () => setState({ ...state, gpWeight: gp.checked }, { undoable: false });
-  const rs = $('#reset'); if (rs) rs.onclick = () => { if (confirm('Clear ALL picks and start over?')) { history = []; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } };
-  const uo = $('#unknownOther'); if (uo) uo.onclick = () => { const name = prompt('Player name (not in pool) taken by the team on the clock:'); if (name) { const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); try { setState(E.draftPlayer(state, id)); } catch (e) { alert(e.message); } } };
+  const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });
+  const uo = $('#unknownOther'); if (uo) uo.onclick = () => ask({ text: 'Player name (not in the pool) taken by the team on the clock:', input: 'text', placeholder: 'e.g. Jaden Ivey', buttons: [{ label: 'Log pick', primary: true, onClick: name => { if (!name) return; const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); dialog = null; try { setState(E.draftPlayer(state, id)); } catch (e) { notify(e.message); } } }, { label: 'Cancel' }] });
+  document.querySelectorAll('[data-dlg]').forEach(b => b.onclick = () => { const d = dialog; const btn = d.buttons[+b.dataset.dlg]; const v = $('#dlgInput')?.value; dialog = null; if (btn.onClick) btn.onClick(v); if (dialog === null) render(); });
   const st = $('#startTimer'); if (st) st.onclick = () => { timerEnd = Date.now() + 60000; tick(); };
 }
 function tick() {

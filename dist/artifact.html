@@ -1,0 +1,1046 @@
+<title>CG Draft War Room</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
+<style>
+  :root { color-scheme:dark; --bg:#0b1220; --card:#141d31; --card2:#1b2742; --text:#eef2ff; --muted:#9aa7c7; --accent:#ffb020; --accent-text:#1a1200; --good:#2fbf71; --bad:#ff5d5d; --line:#263454; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; -webkit-text-size-adjust:100%; }
+  #app { max-width:720px; margin:0 auto; padding-bottom:84px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+  body::before { content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top, 0px); z-index:10; background:var(--bg); }
+  .main { padding:0; }
+  h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:16px 0 8px; }
+  .muted { color:var(--muted); } .small { font-size:13px; } .ok { color:var(--good); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin:12px 0; }
+  .hdr { position:sticky; top:env(safe-area-inset-top, 0px); z-index:5; background:var(--bg); border-bottom:2px solid var(--line); padding:8px 0; }
+  .hdr.mine { border-bottom-color:var(--accent); background:#1a1a0b; }
+  .hdr-row { display:grid; grid-template-columns:1fr 1.2fr 1fr auto; gap:8px; align-items:center; }
+  .hdr-k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .hdr-v { font-size:18px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .timer { font-size:22px; font-weight:800; min-width:56px; text-align:right; } .timer.hot { color:var(--bad); }
+  .nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding:6px max(6px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px)); z-index:5; }
+  .nav-btn { flex:1; min-height:52px; margin:0 3px; border:0; border-radius:10px; background:transparent; color:var(--muted); font-size:15px; font-weight:700; }
+  .nav-btn.on { background:var(--card2); color:var(--text); }
+  button { font:inherit; cursor:pointer; touch-action:manipulation; }
+  .btn-primary { background:var(--accent); color:var(--accent-text); border:0; border-radius:10px; padding:12px 16px; font-weight:800; min-height:48px; }
+  .btn-primary.big { width:100%; font-size:18px; min-height:56px; margin-top:12px; }
+  .btn-primary:disabled { opacity:.4; }
+  .btn-ghost { background:var(--card2); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:12px 14px; min-height:48px; font-weight:600; }
+  .btn-ghost.danger { color:var(--bad); } .btn-ghost.block { display:block; width:100%; margin:6px 0; text-align:left; }
+  .btn-sm { min-height:40px; padding:8px 10px; } .btn-xs { min-height:36px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card2); color:var(--text); font-size:13px; }
+  .btn-xs.on { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .row-btns { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  input, select { width:100%; font:inherit; padding:12px; border-radius:10px; border:1px solid var(--line); background:#0e1627; color:var(--text); min-height:48px; }
+  .taken-form { display:grid; grid-template-columns:1fr auto; gap:8px; }
+  .label { font-size:12px; letter-spacing:.06em; color:var(--muted); font-weight:700; margin:10px 0 6px; }
+  .mine-card { border-color:var(--accent); box-shadow:0 0 0 2px rgba(255,176,32,.25); }
+  .cand { border:1px solid var(--line); border-radius:12px; padding:12px; margin:8px 0; background:var(--card2); }
+  .cand.primary { border-color:var(--accent); }
+  .cand-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .cand-name { font-size:19px; font-weight:800; } .cand.primary .cand-name { font-size:22px; }
+  .cand-actions { display:flex; gap:6px; flex-shrink:0; flex-direction:column; }
+  .why { margin:8px 0 6px 18px; padding:0; } .why li { margin:3px 0; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+  .chip { font-size:12px; padding:3px 7px; border-radius:999px; background:#0e1627; border:1px solid var(--line); color:var(--muted); }
+  .chip.good { background:rgba(47,191,113,.2); color:#9ff0c3; border-color:rgba(47,191,113,.5); } .chip.good2 { background:var(--good); color:#03200f; border-color:var(--good); font-weight:700; }
+  .chip.bad { background:rgba(255,93,93,.18); color:#ffb4b4; border-color:rgba(255,93,93,.5); } .chip.bad2 { background:var(--bad); color:#2a0000; border-color:var(--bad); font-weight:700; }
+  .chip.punt { text-decoration:line-through; opacity:.5; }
+  .flag { color:#ffd27a; background:rgba(255,176,32,.12); border-radius:8px; padding:6px 8px; margin:6px 0; font-size:13px; }
+  .conf { border-radius:8px; padding:8px 10px; font-size:14px; margin:6px 0; background:#0e1627; }
+  .conf-high { border-left:4px solid var(--good); } .conf-medium { border-left:4px solid var(--accent); } .conf-low { border-left:4px solid var(--bad); }
+  .roster { display:grid; grid-template-columns:1fr 1fr; gap:6px; } .rslot { display:flex; gap:8px; align-items:center; background:#0e1627; border-radius:8px; padding:8px; font-size:14px; min-height:40px; }
+  .rslot.filled { border:1px solid var(--line); } .rs { font-weight:800; color:var(--accent); min-width:34px; }
+  .bars { display:grid; gap:4px; } .bar { display:grid; grid-template-columns:40px 1fr 44px; gap:6px; align-items:center; font-size:13px; }
+  .bt { background:#0e1627; height:12px; border-radius:6px; overflow:hidden; } .bf { height:100%; } .bf.pos { background:var(--good); } .bf.neg { background:var(--bad); } .bf.punt { opacity:.3; } .bv { text-align:right; color:var(--muted); }
+  .ledger div { padding:5px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .list { margin:0; } .prow { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .prow.gone { opacity:.45; } .pinfo { flex:1; min-width:0; } .prow .cand-actions { flex-direction:row; }
+  .sticky-search { position:sticky; top:calc(62px + env(safe-area-inset-top, 0px)); z-index:4; }
+  .slot-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; } .slot-btn { min-height:56px; font-size:20px; font-weight:800; border-radius:12px; border:1px solid var(--line); background:var(--card2); color:var(--text); }
+  .slot-btn.on { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:8px 0; } .row input, .row select { width:auto; min-width:120px; } .row input[type=checkbox] { width:28px; height:28px; min-height:0; }
+  .compact { padding-left:18px; margin:4px 0; } .plan li { margin:8px 0; } .src li { margin:6px 0; word-break:break-word; } a { color:#8fc1ff; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:20; display:flex; align-items:flex-end; }
+  .modal-card { background:var(--card); border-radius:16px 16px 0 0; padding:16px; width:100%; max-height:85vh; overflow:auto; }
+  .toast { position:fixed; left:50%; bottom:calc(90px + env(safe-area-inset-bottom, 0px)); transform:translate(-50%, 20px); background:#ffd27a; color:#1a1200; padding:10px 14px; border-radius:10px; font-weight:700; max-width:92vw; opacity:0; transition:opacity .2s, transform .2s; z-index:30; pointer-events:none; }
+  .toast.show { opacity:1; transform:translate(-50%, 0); }
+  @media (prefers-reduced-motion: reduce) { .toast { transition:none; } }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #8fc1ff; outline-offset:2px; }
+  details summary { cursor:pointer; color:var(--muted); padding:6px 0; }
+  @media (min-width:520px) { .modal { align-items:center; } .modal-card { max-width:520px; border-radius:16px; } }
+</style>
+
+<div id="app"><p style="padding:16px">Loading…</p></div>
+<noscript><p style="padding:16px">This app needs JavaScript.</p></noscript>
+<script>
+// Draft War Room engine — pure logic, no DOM. Works as an ES module and when inlined.
+// Everything here is deterministic and unit-tested (see test/engine.test.js).
+
+const CATS = [
+  { key: 'fgp', label: 'FG%', higherIsBetter: true,  pct: true, att: 'fga' },
+  { key: 'ftp', label: 'FT%', higherIsBetter: true,  pct: true, att: 'fta' },
+  { key: 'tpm', label: '3PM', higherIsBetter: true },
+  { key: 'pts', label: 'PTS', higherIsBetter: true },
+  { key: 'reb', label: 'REB', higherIsBetter: true },
+  { key: 'ast', label: 'AST', higherIsBetter: true },
+  { key: 'stl', label: 'ST',  higherIsBetter: true },
+  { key: 'blk', label: 'BLK', higherIsBetter: true },
+  { key: 'tov', label: 'TO',  higherIsBetter: false },
+];
+
+const LEAGUE = {
+  name: 'CG Worldwide League',
+  yahooLeagueId: 60156,
+  season: '2026-27',
+  teams: 10,
+  pickClockSeconds: 60,
+  scoring: 'H2H 9-cat',
+  // Active roster slots in Yahoo order. IL slots are separate (4) and only usable for injured players.
+  slots: ['PG', 'SG', 'G', 'SF', 'PF', 'F', 'C', 'C', 'Util', 'Util', 'BN', 'BN', 'BN'],
+  ilSlots: 4,
+};
+
+const SLOT_ELIGIBILITY = {
+  PG: ['PG'], SG: ['SG'], G: ['PG', 'SG'], SF: ['SF'], PF: ['PF'], F: ['SF', 'PF'],
+  C: ['C'], Util: null, BN: null, // null = any position
+};
+
+const ROSTER_SIZE = LEAGUE.slots.length; // 13 draftable players
+
+// ---------- Snake draft math ----------
+function teamOnClock(overallPick, numTeams) {
+  if (overallPick < 1) throw new Error('overallPick must be >= 1');
+  const round = Math.ceil(overallPick / numTeams);
+  const idx = (overallPick - 1) % numTeams; // 0-based position within the round
+  return round % 2 === 1 ? idx + 1 : numTeams - idx; // 1-based draft slot
+}
+function roundOf(overallPick, numTeams) { return Math.ceil(overallPick / numTeams); }
+function pickInRound(overallPick, numTeams) { return ((overallPick - 1) % numTeams) + 1; }
+
+/** All overall pick numbers belonging to draft slot `slot` (1-based). */
+function picksForSlot(slot, numTeams, rounds = ROSTER_SIZE) {
+  const out = [];
+  for (let r = 1; r <= rounds; r++) {
+    const pos = r % 2 === 1 ? slot : numTeams + 1 - slot;
+    out.push((r - 1) * numTeams + pos);
+  }
+  return out;
+}
+function nextPickForSlot(slot, numTeams, currentOverall, rounds = ROSTER_SIZE) {
+  return picksForSlot(slot, numTeams, rounds).find(p => p >= currentOverall) ?? null;
+}
+function followingPickForSlot(slot, numTeams, currentOverall, rounds = ROSTER_SIZE) {
+  const list = picksForSlot(slot, numTeams, rounds).filter(p => p > currentOverall);
+  return list[0] ?? null;
+}
+
+// ---------- Names ----------
+function normaliseName(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[’'`.]/g, '')
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Resolve a typed name against players. Returns { match } for a unique hit,
+ * { ambiguous: [players] } when several fit, or { none: true }.
+ */
+function resolveName(input, players) {
+  const q = normaliseName(input);
+  if (!q) return { none: true };
+  const exact = players.filter(p => normaliseName(p.name) === q);
+  if (exact.length === 1) return { match: exact[0] };
+  if (exact.length > 1) return { ambiguous: exact };
+  const parts = q.split(' ');
+  const last = parts[parts.length - 1];
+  // last-name only, or "first last" with partial first name, or contains
+  const contains = players.filter(p => normaliseName(p.name).includes(q));
+  if (contains.length === 1) return { match: contains[0] };
+  if (contains.length > 1) return { ambiguous: contains };
+  const lastOnly = players.filter(p => normaliseName(p.name).split(' ').slice(-1)[0] === last);
+  if (lastOnly.length === 1 && parts.length === 1) return { match: lastOnly[0] };
+  if (parts.length > 1) {
+    const firstInit = parts[0];
+    const fl = lastOnly.filter(p => normaliseName(p.name).startsWith(firstInit));
+    if (fl.length === 1) return { match: fl[0] };
+    if (fl.length > 1) return { ambiguous: fl };
+  }
+  if (lastOnly.length > 1) return { ambiguous: lastOnly };
+  return { none: true };
+}
+
+/** Parse "TAKEN: A, B, C" / newline / semicolon separated lists. */
+function parseNameList(text) {
+  return String(text || '')
+    .replace(/^\s*(taken|drafted|gone)\s*:\s*/i, '')
+    .split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+}
+
+// ---------- Category value model (z-scores) ----------
+const COUNTING = ['tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov'];
+
+function mean(a) { return a.reduce((s, x) => s + x, 0) / (a.length || 1); }
+function sd(a) { const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length || 1)) || 1; }
+
+/**
+ * Compute per-category z-scores for every player.
+ * - Counting stats: z of per-game value (optionally scaled by games played / 82).
+ * - Percentages: impact = (pct - poolAvgPct) * attempts, then z of impact (volume-aware).
+ * - Turnovers: sign flipped so fewer = better.
+ * - Players with a missing stat get z = 0 for that cat (no artificial advantage) and `missing` listed.
+ * The pool used for mean/SD is the top `poolSize` players by a first-pass total, so the baseline is
+ * "a draftable player", not the whole NBA.
+ */
+function computeValues(players, opts = {}) {
+  const poolSize = opts.poolSize ?? 130;
+  const gpWeight = opts.gpWeight ?? true;
+  const weights = opts.weights ?? {};
+  const scale = p => (gpWeight && p.gp ? Math.min(p.gp, 82) / 82 : 1);
+
+  const stat = (p, k) => (typeof p[k] === 'number' && !Number.isNaN(p[k]) ? p[k] : null);
+
+  function pass(pool) {
+    const poolFga = pool.map(p => stat(p, 'fga') ?? 0);
+    const poolFta = pool.map(p => stat(p, 'fta') ?? 0);
+    const avgFgp = pool.reduce((s, p) => s + (stat(p, 'fgp') ?? 0) * (stat(p, 'fga') ?? 0), 0) / (poolFga.reduce((a, b) => a + b, 0) || 1);
+    const avgFtp = pool.reduce((s, p) => s + (stat(p, 'ftp') ?? 0) * (stat(p, 'fta') ?? 0), 0) / (poolFta.reduce((a, b) => a + b, 0) || 1);
+    const impact = (p, pk, ak, avg) => {
+      const v = stat(p, pk), a = stat(p, ak);
+      return v == null || a == null ? null : (v - avg) * a;
+    };
+    const raw = {};
+    for (const k of COUNTING) raw[k] = pool.map(p => { const v = stat(p, k); return v == null ? null : v * scale(p); });
+    raw.fgp = pool.map(p => { const v = impact(p, 'fgp', 'fga', avgFgp); return v == null ? null : v * scale(p); });
+    raw.ftp = pool.map(p => { const v = impact(p, 'ftp', 'fta', avgFtp); return v == null ? null : v * scale(p); });
+    const stats = {};
+    for (const k of Object.keys(raw)) {
+      const vals = raw[k].filter(v => v != null);
+      stats[k] = { m: mean(vals), s: sd(vals) };
+    }
+    return { stats, avgFgp, avgFtp };
+  }
+
+  function zFor(p, model) {
+    const z = {}; const missing = [];
+    for (const c of CATS) {
+      let v;
+      if (c.pct) {
+        const pv = stat(p, c.key), a = stat(p, c.att);
+        v = pv == null || a == null ? null : (pv - (c.key === 'fgp' ? model.avgFgp : model.avgFtp)) * a * scale(p);
+      } else {
+        const pv = stat(p, c.key);
+        v = pv == null ? null : pv * scale(p);
+      }
+      if (v == null) { z[c.key] = 0; missing.push(c.key); continue; }
+      let zz = (v - model.stats[c.key].m) / model.stats[c.key].s;
+      if (!c.higherIsBetter) zz = -zz;
+      z[c.key] = zz;
+    }
+    return { z, missing };
+  }
+
+  const total = (z) => CATS.reduce((s, c) => s + (weights[c.key] ?? 1) * z[c.key], 0);
+
+  // First pass over everyone, pick the pool, second pass with the pool baseline.
+  let model = pass(players);
+  let scored = players.map(p => ({ p, ...zFor(p, model) }));
+  scored.sort((a, b) => total(b.z) - total(a.z));
+  const pool = scored.slice(0, Math.min(poolSize, scored.length)).map(s => s.p);
+  model = pass(pool);
+  const out = players.map(p => {
+    const { z, missing } = zFor(p, model);
+    return { ...p, z, missing, value: total(z), fallback: missing.length > 0 };
+  });
+  out.sort((a, b) => b.value - a.value);
+  out.forEach((p, i) => { p.modelRank = i + 1; });
+  return out;
+}
+
+// ---------- Roster / slots ----------
+function canFillSlot(slot, positions) {
+  const elig = SLOT_ELIGIBILITY[slot];
+  if (elig === null) return true;
+  return positions.some(pos => elig.includes(pos));
+}
+
+/**
+ * Greedy-with-backtracking assignment of players to slots. Returns { assignments: {slot_i: player}, unfilled: [slots], overflow: [players] }.
+ * Tries to place every player; specific slots are filled before flex slots.
+ */
+function assignRoster(players, slots = LEAGUE.slots) {
+  const order = slots.map((s, i) => ({ s, i }));
+  const specificity = s => (SLOT_ELIGIBILITY[s] === null ? 9 : SLOT_ELIGIBILITY[s].length);
+  const assignment = new Array(slots.length).fill(null);
+  const placed = new Set();
+  // Sort players by how few slots they can fill (most constrained first)
+  const sorted = [...players].sort((a, b) => {
+    const ca = order.filter(o => canFillSlot(o.s, a.positions)).length;
+    const cb = order.filter(o => canFillSlot(o.s, b.positions)).length;
+    return ca - cb;
+  });
+  function tryPlace(idx) {
+    if (idx >= sorted.length) return true;
+    const pl = sorted[idx];
+    const candidates = order.filter(o => assignment[o.i] === null && canFillSlot(o.s, pl.positions))
+      .sort((x, y) => specificity(x.s) - specificity(y.s));
+    for (const c of candidates) {
+      assignment[c.i] = pl; placed.add(pl);
+      if (tryPlace(idx + 1)) return true;
+      assignment[c.i] = null; placed.delete(pl);
+    }
+    // could not place this player anywhere: skip (overflow) and continue
+    return tryPlace(idx + 1);
+  }
+  tryPlace(0);
+  const assignments = slots.map((s, i) => ({ slot: s, player: assignment[i] }));
+  const unfilled = assignments.filter(a => !a.player).map(a => a.slot);
+  const overflow = players.filter(p => !placed.has(p));
+  return { assignments, unfilled, overflow };
+}
+
+function openSlots(roster, slots = LEAGUE.slots) {
+  return assignRoster(roster, slots).unfilled;
+}
+
+/** Sum of z per category for a roster. */
+function teamProfile(roster) {
+  const prof = {};
+  for (const c of CATS) prof[c.key] = roster.reduce((s, p) => s + (p.z?.[c.key] ?? 0), 0);
+  return prof;
+}
+
+// ---------- Recommendation ----------
+/**
+ * Score available players for THIS roster. Returns sorted candidates with reasons.
+ * opts: { punts: ['ftp'], nextPick, currentPick, numTeams, rosterSlots }
+ */
+function recommend(available, roster, opts = {}) {
+  const punts = new Set(opts.punts || []);
+  const slots = opts.rosterSlots || LEAGUE.slots;
+  const open = openSlots(roster, slots);
+  const prof = teamProfile(roster);
+  const nextPick = opts.nextPick ?? null;
+  const currentPick = opts.currentPick ?? null;
+  const rosterCount = roster.length;
+  const draftProgress = rosterCount / slots.length; // 0..1
+
+  // Need weights: the more negative a category total is relative to roster size, the more a contribution there is worth.
+  // Scale shrinks early (little info) and grows mid-draft. Punted categories get 0.
+  const needWeight = {};
+  for (const c of CATS) {
+    if (punts.has(c.key)) { needWeight[c.key] = 0; continue; }
+    const perPlayer = rosterCount ? prof[c.key] / rosterCount : 0; // avg z per rostered player
+    const need = Math.max(-1.5, Math.min(1.5, -perPlayer)); // weak cat => positive need
+    needWeight[c.key] = 1 + 0.35 * need * Math.min(1, rosterCount / 4);
+  }
+
+  const centresOpen = open.filter(s => s === 'C').length;
+  const guardsOpen = open.filter(s => ['PG', 'SG', 'G'].includes(s)).length;
+  const fwdOpen = open.filter(s => ['SF', 'PF', 'F'].includes(s)).length;
+  const flexOpen = open.filter(s => ['Util', 'BN'].includes(s)).length;
+
+  const cands = available.map(p => {
+    const fitZ = CATS.reduce((s, c) => s + needWeight[c.key] * (p.z?.[c.key] ?? 0), 0);
+    const baseZ = CATS.reduce((s, c) => s + (punts.has(c.key) ? 0 : (p.z?.[c.key] ?? 0)), 0);
+    let score = fitZ;
+    const reasons = [];
+    const flags = [];
+
+    // Position fit
+    const fillsSpecific = open.some(s => SLOT_ELIGIBILITY[s] && canFillSlot(s, p.positions));
+    const fillsAny = open.some(s => canFillSlot(s, p.positions));
+    if (!fillsAny) { score -= 3; flags.push('No open slot fits this player'); }
+    else if (!fillsSpecific && flexOpen <= 1 && open.length > 0) { score -= 0.5; flags.push('Only a flex/bench slot fits'); }
+    if (p.positions.includes('C') && centresOpen > 0 && draftProgress >= 0.4) { score += 0.35 * centresOpen; reasons.push(`Fills an open C slot (${centresOpen} open)`); }
+    if (!p.positions.includes('C') && centresOpen >= 2 && draftProgress >= 0.6 && open.length <= 5) { score -= 0.5; flags.push('Two C slots still open'); }
+
+    // Availability risk / injuries
+    if (p.gp != null && p.gp < 55) { flags.push(`Projected ~${p.gp} games`); }
+    if (p.risk) flags.push(p.risk);
+
+    // ADP / value & survive-to-next-pick
+    let adpNote = null; let likelyGone = null;
+    if (typeof p.adp === 'number' && currentPick) {
+      const diff = p.adp - currentPick;
+      adpNote = diff >= 8 ? `Value: ADP ~${p.adp} vs pick ${currentPick}` : diff <= -8 ? `Reach: ADP ~${p.adp} vs pick ${currentPick}` : `Fair: ADP ~${p.adp}`;
+      if (nextPick) likelyGone = p.adp < nextPick - 3;
+      if (likelyGone === true) score += 0.25; // taking players who will not survive is how value is captured
+      if (likelyGone === false && nextPick - currentPick > 3) score -= 0.15;
+    }
+
+    // Top category contributions for the "why"
+    const contribs = CATS.filter(c => !punts.has(c.key)).map(c => ({ c, z: p.z?.[c.key] ?? 0 }))
+      .sort((a, b) => b.z - a.z);
+    const strengths = contribs.filter(x => x.z >= 0.6).slice(0, 4).map(x => x.c.label);
+    const weaknesses = contribs.filter(x => x.z <= -0.8).map(x => x.c.label);
+    const helpsNeeds = contribs.filter(x => x.z >= 0.5 && needWeight[x.c.key] > 1.1).map(x => x.c.label);
+    if (strengths.length) reasons.unshift(`Elite/strong in ${strengths.join(', ')}`);
+    if (helpsNeeds.length) reasons.push(`Shores up your weak cats: ${helpsNeeds.join(', ')}`);
+    if (p.note) reasons.push(p.note);
+
+    return { player: p, score, baseZ, fitZ, reasons: reasons.slice(0, 3), flags, strengths, weaknesses, adpNote, likelyGone };
+  });
+  cands.sort((a, b) => b.score - a.score);
+
+  const best = cands[0] || null;
+  let confidence = 'low', confidenceWhy = 'No candidates';
+  if (best) {
+    const gap = cands[1] ? best.score - cands[1].score : 1;
+    const missing = best.player.missing?.length || 0;
+    if (gap >= 0.6 && missing === 0 && !best.player.risk) { confidence = 'high'; confidenceWhy = 'Clear gap to next option and no major risk flag'; }
+    else if (gap >= 0.25 || (!best.player.risk && missing === 0)) { confidence = 'medium'; confidenceWhy = gap < 0.25 ? 'Close call with the backups' : (best.player.risk ? 'Reasonable gap but carries a risk flag' : 'Moderate gap to the backups'); }
+    else { confidence = 'low'; confidenceWhy = 'Close call and/or risk flag — backups are nearly as good'; }
+  }
+  return { candidates: cands, best, backups: cands.slice(1, 3), confidence, confidenceWhy, open, needWeight, profile: prof };
+}
+
+// ---------- Draft state ----------
+function createState(overrides = {}) {
+  return {
+    numTeams: LEAGUE.teams,
+    mySlot: null,
+    teamNames: Array.from({ length: LEAGUE.teams }, (_, i) => `Team ${i + 1}`),
+    picks: [], // { overall, playerId, slot }
+    punts: [],
+    gpWeight: true,
+    removed: [], // player ids manually removed (e.g. "not in this player pool")
+    ...overrides,
+  };
+}
+
+function currentOverall(state) { return state.picks.length + 1; }
+function isMyTurn(state) { return state.mySlot != null && teamOnClock(currentOverall(state), state.numTeams) === state.mySlot; }
+function draftedIds(state) { return new Set(state.picks.map(p => p.playerId)); }
+function myRoster(state, players) {
+  const byId = new Map(players.map(p => [p.id, p]));
+  return state.picks.filter(p => p.slot === state.mySlot).map(p => byId.get(p.playerId)).filter(Boolean);
+}
+function rosterForSlot(state, players, slot) {
+  const byId = new Map(players.map(p => [p.id, p]));
+  return state.picks.filter(p => p.slot === slot).map(p => byId.get(p.playerId)).filter(Boolean);
+}
+function availablePlayers(state, players) {
+  const gone = draftedIds(state); const removed = new Set(state.removed || []);
+  return players.filter(p => !gone.has(p.id) && !removed.has(p.id));
+}
+
+/** Immutable draft: returns a new state, or throws for duplicates / completed drafts. */
+function draftPlayer(state, playerId, opts = {}) {
+  if (draftedIds(state).has(playerId)) throw new Error('Player already drafted');
+  const overall = currentOverall(state);
+  const maxPicks = state.numTeams * ROSTER_SIZE;
+  if (overall > maxPicks) throw new Error('Draft is complete');
+  const slot = opts.slot ?? teamOnClock(overall, state.numTeams);
+  return { ...state, picks: [...state.picks, { overall, playerId, slot }] };
+}
+function undoLastPick(state) {
+  if (!state.picks.length) return state;
+  return { ...state, picks: state.picks.slice(0, -1) };
+}
+
+// Player pool for the 2026-27 season — CG Worldwide League draft assistant.
+//
+// HOW TO READ THIS FILE (honesty notes):
+// * Stats are the ANALYST'S 2026-27 PER-GAME ESTIMATES. They start from each player's 2025-26
+//   production and are adjusted for confirmed offseason moves, roles and injury news gathered on
+//   20 Oct 2026 (see sources.js). They are NOT official projections from any site: every one of
+//   the ranking sites named in the brief was blocked by this session's network policy, so only
+//   web-search summaries could be used. Treat the numbers as estimates with +/- 10-15% error.
+// * adp = Yahoo-style ADP ONLY where a source snippet quoted a number (date checked 20 Oct 2026),
+//   otherwise null. Null ADP never gives a player an advantage in the model.
+// * gp = projected games played (availability). It scales counting-stat value when "weight by
+//   games" is on.
+// * positions = approximate Yahoo eligibility. Yahoo may differ; edit in the Players tab if needed.
+// * risk / note = sourced flags. 'team' marked '?' = could not be verified on 20 Oct 2026.
+//
+// Columns: id, name, team, positions, pts, reb, ast, stl, blk, tpm, fgp, fga, ftp, fta, tov, gp, adp, risk, note
+const ROWS = [
+['jokic','Nikola Jokic','DEN',['C'],27.5,12.5,10.5,1.4,0.7,1.8,.570,18.5,.820,7.5,3.3,70,1.5,null,'Consensus #1 in 9-cat (RotoBaller, ESPN, Parlae, Yahoo mock)'],
+['wemby','Victor Wembanyama','SAS',['C'],25.5,11.5,3.5,1.1,3.3,2.8,.485,18.5,.830,6.0,3.0,68,2.5,'2025 blood-clot history; led NBA in blocks 2025-26','Consensus #2; elite BLK/REB/3PM from a C'],
+['sga','Shai Gilgeous-Alexander','OKC',['PG','SG'],31.0,5.0,6.3,1.7,1.0,2.0,.520,20.5,.900,8.5,2.4,74,2.8,null,'Consensus #3; best FG%/FT%/PTS/low-TO combo'],
+['luka','Luka Doncic','LAL',['PG','SG'],32.0,8.5,8.3,1.6,0.5,4.0,.460,23.0,.790,9.5,3.9,66,4.5,'Heavy TO, FG% drag','Led NBA in PPG and 3PM in 2025-26; LeBron gone from LAL'],
+['maxey','Tyrese Maxey','PHI',['PG','SG'],27.0,4.0,6.0,1.8,0.4,3.5,.450,21.0,.880,6.0,2.5,70,9.4,null,'Titus Rd-1 favourite; 1.9 SPG in 2025-26; Brown+LeBron now share usage'],
+['cade','Cade Cunningham','DET',['PG','SG'],25.0,6.0,9.5,1.3,0.8,2.0,.465,20.0,.850,7.0,4.2,70,6.2,'High turnovers','2nd in APG (9.9) in 2025-26'],
+['edwards','Anthony Edwards','MIN',['SG','SF'],28.5,5.5,4.5,1.3,0.6,4.0,.450,22.0,.840,7.5,3.2,74,7,null,'LaMelo now shares the ball in MIN'],
+['tatum','Jayson Tatum','BOS',['SF','PF'],26.0,8.5,5.5,1.1,0.6,3.2,.450,20.0,.810,6.5,2.7,65,8,'Achilles: returned Mar 2026 (16 games); listed full-go','Yahoo early top-50 had him #8; RotoBaller #5'],
+['jjohnson','Jalen Johnson','ATL',['SF','PF'],22.0,10.0,7.5,1.5,1.0,1.3,.510,16.0,.750,4.5,3.0,65,12,'Shoulder/injury history','Karabell "Do Draft"; 22.5/10.3/7.9 last season'],
+['barnes','Scottie Barnes','TOR',['SF','PF'],20.0,8.0,6.5,1.4,1.1,1.4,.470,16.0,.770,4.5,2.8,70,14.1,null,'Kawhi arrival may trim usage'],
+['flagg','Cooper Flagg','DAL',['SF','PF'],23.0,7.5,4.5,1.2,1.1,2.0,.470,18.0,.790,5.0,2.8,72,10,'SportsLine model bust risk with Kyrie back','21.0 PPG as a rookie'],
+['giannis','Giannis Antetokounmpo','MIA',['PF','C'],30.0,11.5,6.0,1.0,1.2,0.2,.600,19.5,.610,10.5,3.3,66,11,'FT% sinks balanced builds','Traded to MIA; anchor of punt-FT% builds'],
+['dmitchell','Donovan Mitchell','CLE',['PG','SG'],25.0,4.5,5.0,1.4,0.3,3.5,.460,19.0,.870,5.0,2.5,68,13,null,'Harden now shares CLE backcourt'],
+['hali','Tyrese Haliburton','IND',['PG'],19.0,3.5,9.0,1.3,0.6,3.0,.470,14.0,.860,3.5,1.9,62,14.9,'Returning from Achilles (missed all 2025-26); tweaked ankle in first game back','ADP rose 18.7 -> 14.9; elite AST/low TO if healthy'],
+['durant','Kevin Durant','HOU',['SF','PF'],25.0,6.0,4.3,0.8,1.0,2.4,.520,18.0,.850,6.0,2.7,62,15.9,'Turns 38; rest days','Cleanest efficiency profile; went pick 10 in Yahoo mock'],
+['chet','Chet Holmgren','OKC',['PF','C'],17.0,8.5,2.3,0.8,2.3,1.5,.510,12.5,.800,4.0,1.5,68,18,null,'3rd in total blocks 2025-26'],
+['jmurray','Jamal Murray','DEN',['PG','SG'],23.0,5.0,6.5,1.3,0.3,2.8,.480,18.0,.900,4.0,2.2,66,20,null,'Yahoo early #11'],
+['curry','Stephen Curry','GSW',['PG','SG'],24.0,4.5,5.5,1.1,0.3,4.3,.450,18.5,.920,5.0,2.8,62,17,'Age 38; sprained ankle 18 Oct, expected to play opener','League-leading 3PM volume'],
+['kat','Karl-Anthony Towns','NYK',['PF','C'],22.0,12.0,3.0,0.8,0.8,2.0,.520,16.0,.830,5.0,2.8,68,22,null,'2nd in RPG 2025-26'],
+['sabonis','Domantas Sabonis','SAC',['C'],19.0,13.0,6.5,0.8,0.5,0.6,.580,13.5,.750,4.5,3.2,66,25.4,'Trade candidate in-season','Karabell "Do Draft"'],
+['brunson','Jalen Brunson','NYK',['PG'],25.0,3.0,7.0,0.9,0.2,2.6,.480,19.0,.830,6.0,2.4,66,21.4,null,'Yahoo ADP 21.4 vs ESPN 12.9'],
+['sengun','Alperen Sengun','HOU',['C'],20.0,9.5,6.0,1.2,0.9,0.6,.500,15.0,.720,5.0,3.1,70,24,null,'Karabell "Do Draft"; 20/9/6 line'],
+['mobley','Evan Mobley','CLE',['PF','C'],19.0,9.5,3.2,0.9,1.6,1.0,.550,13.0,.760,4.0,1.8,68,23,null,null],
+['jdub','Jalen Williams','OKC',['SG','SF','PF'],21.0,5.5,5.5,1.5,0.6,1.8,.480,16.0,.800,4.5,2.4,66,26,'Wrist issues in 2025-26',null],
+['davis','Anthony Davis','WAS',['PF','C'],24.0,11.5,3.3,1.2,2.0,0.8,.510,18.0,.770,7.0,2.2,55,14.9,'Durability; did not play for WAS after Feb trade','ADP rising into Rd 1 (Fantasy Nerds); trade candidate'],
+['paolo','Paolo Banchero','ORL',['PF','SF'],25.0,7.5,5.0,0.9,0.6,2.0,.450,20.0,.740,7.0,3.2,64,28,'FG%/TO drag',null],
+['lauri','Lauri Markkanen','UTA',['PF','SF'],25.0,7.0,2.0,0.8,0.5,3.5,.470,17.5,.890,6.5,1.6,60,30,'Played 42 games in 2025-26; GTD neck','Parlae 9-cat #8; 89.6 FT% on volume'],
+['tmurphy','Trey Murphy III','NOP',['SF','SG'],22.0,6.0,3.5,1.3,0.8,3.4,.450,17.0,.850,4.0,1.7,65,35,null,'Parlae #11; Leaguewinner #18'],
+['dwhite','Derrick White','BOS',['PG','SG'],18.0,4.5,5.3,1.1,1.1,3.3,.440,14.0,.850,3.0,1.7,72,36,null,'Guard who blocks shots'],
+['reaves','Austin Reaves','LAL',['PG','SG'],23.0,5.0,6.5,1.1,0.3,2.8,.460,17.0,.880,6.0,2.8,68,23.3,null,'Titus Rd-2 favourite; LeBron gone'],
+['kessler','Walker Kessler','LAL',['C'],13.0,11.0,1.5,0.6,2.5,0.0,.680,8.5,.560,3.0,1.5,66,57,'Shoulder surgery ended 2025-26 early; FT% drag','SportsLine sleeper at ADP ~56-58; traded to LAL'],
+['amen','Amen Thompson','HOU',['PG','SF'],16.0,8.0,4.5,1.6,1.3,0.3,.540,12.5,.700,4.0,2.3,68,32,'No threes, weak FT','Punt-PTS/3PM star'],
+['lamelo','LaMelo Ball','MIN',['PG'],25.0,7.0,7.5,1.3,0.3,3.8,.410,21.0,.840,5.5,3.8,55,33,'Injury history; FG%/TO drag; Karabell do-not-draft','Traded to MIN; 2nd in 3PM 2025-26'],
+['kawhi','Kawhi Leonard','TOR',['SF','PF'],24.0,6.5,3.5,1.5,0.6,2.1,.500,17.0,.860,5.0,1.8,55,27,'Load management; Karabell do-not-draft at Rd 2','Traded to TOR; Parlae punt-AST #2'],
+['jjj','Jaren Jackson Jr.','UTA',['PF','C'],20.0,6.0,2.0,1.1,1.6,1.8,.480,15.0,.800,4.5,2.0,62,40,null,'Traded to UTA at 2026 deadline'],
+['zubac','Ivica Zubac','IND',['C'],16.0,12.0,2.5,0.6,1.1,0.0,.620,11.0,.680,4.0,1.6,72,45,null,'Traded to IND Feb 2026'],
+['bam','Bam Adebayo','MIA',['C','PF'],17.0,9.5,4.0,1.1,1.0,0.8,.490,13.5,.760,4.0,2.2,70,42,null,'Pairs with Giannis'],
+['dyson','Dyson Daniels','ATL',['PG','SG','SF'],14.0,6.0,4.5,2.4,0.6,1.0,.480,11.5,.600,2.5,2.0,72,48,'FT% drag','Co-led NBA in SPG (2.0)'],
+['ausar','Ausar Thompson','DET',['SF','SG'],12.0,7.0,3.0,2.0,0.8,0.3,.550,9.0,.650,2.5,1.6,68,60,'No 3s, weak FT','RotoWire top category sleeper; co-led NBA in SPG'],
+['castle','Stephon Castle','SAS',['PG','SG'],19.0,6.0,6.5,1.3,0.5,1.4,.430,16.0,.760,4.5,3.0,70,38,'Rotoworld fade: volume-dependent at ADP','Karabell "Do Draft" (points-lean)'],
+['harper','Dylan Harper','SAS',['PG','SG'],16.0,4.5,5.0,1.2,0.4,1.5,.440,13.5,.750,3.5,2.5,68,70,null,null],
+['fox','De\'Aaron Fox','SAS',['PG'],20.0,4.0,6.5,1.5,0.3,2.0,.460,16.0,.800,5.0,2.8,60,50,'RotoWire: fade at ADP',null],
+['bane','Desmond Bane','ORL',['SG','SF'],20.0,5.0,4.5,1.1,0.4,2.8,.470,15.0,.870,3.5,2.3,68,56.4,null,'ADP falling 52.4 -> 56.4'],
+['franz','Franz Wagner','ORL',['SF','PF'],22.0,5.5,4.8,1.2,0.4,1.5,.470,17.0,.800,6.0,2.6,66,44,'Fantasy Six Pack bust list',null],
+['suggs','Jalen Suggs','ORL',['PG','SG'],15.0,4.0,4.0,1.6,0.7,2.2,.430,12.5,.850,3.0,2.3,60,112.6,'Injury history','Sleeper on DK, Leaguewinner, Parlae; ADP rising'],
+['duren','Jalen Duren','DET',['C'],17.0,11.5,2.5,0.8,1.1,0.0,.680,11.0,.680,4.5,2.3,70,46,'FT% drag',null],
+['avdija','Deni Avdija','POR',['SF','PF'],21.0,8.0,6.0,1.1,0.5,2.0,.480,15.5,.780,6.5,3.1,66,48.6,'Crowded POR backcourt','ADP falling 45 -> 48.6'],
+['ssharpe','Shaedon Sharpe','POR',['SG','SF'],19.0,4.0,3.0,1.0,0.4,2.5,.450,16.0,.780,4.0,2.0,65,94.6,'Returned from shoulder absence 12 Oct','Yahoo ADP 94.6 (FantasyGOATs)'],
+['lillard','Damian Lillard','POR',['PG'],20.0,4.0,6.5,1.0,0.2,3.2,.430,15.5,.910,5.5,2.5,55,67.6,'Age 36, back from Achilles','ADP 69.7 -> 67.6; NBA Fantasy Edge value gap'],
+['morant','Ja Morant','POR',['PG'],20.0,4.5,7.0,1.2,0.3,1.6,.430,16.0,.800,5.5,3.3,50,80,'79 of 246 games last 3 yrs; Karabell bust; crowded POR','Traded to POR'],
+['jrue','Jrue Holiday','POR',['PG','SG'],11.0,4.0,4.0,1.2,0.5,1.6,.450,9.0,.870,1.5,1.5,55,115.5,'Starting role unclear','ADP 118.3 -> 115.5'],
+['clingan','Donovan Clingan','POR',['C'],12.0,11.0,2.0,0.6,1.8,0.4,.560,9.0,.650,2.5,1.6,68,85,'FT% drag','3rd in RPG 2025-26; punt-PTS target'],
+['camara','Toumani Camara','POR',['SF','PF'],12.0,6.0,2.0,1.5,0.7,1.8,.450,10.0,.750,2.0,1.3,72,120,null,null],
+['zion','Zion Williamson','NOP',['PF'],24.0,7.0,5.0,1.1,0.6,0.2,.560,17.0,.680,7.0,3.2,50,55,'Durability (30 games in 24-25, 62 in 25-26); Athlon bust',null],
+['dejounte','Dejounte Murray','NOP',['PG','SG'],18.0,5.0,6.5,1.5,0.3,2.2,.430,16.0,.820,3.5,2.6,58,64.1,'Achilles (2025) return','ADP 67.8 -> 64.1'],
+['herb','Herb Jones','NOP',['SF','PF'],10.0,4.0,2.5,1.6,0.8,1.2,.480,8.0,.750,2.0,1.3,62,125,null,'Stocks specialist'],
+['missi','Yves Missi','NOP',['C'],11.0,9.5,1.5,0.6,1.4,0.0,.560,8.0,.550,3.0,1.6,70,140,'FT% drag',null],
+['booker','Devin Booker','PHX',['SG','PG'],26.0,4.5,6.5,1.0,0.3,2.8,.460,20.0,.890,6.5,3.0,66,30,null,null],
+['jgreen','Jalen Green','PHX',['SG'],20.0,4.0,3.5,1.0,0.3,2.8,.420,17.0,.800,4.0,2.5,60,85,'Hamstring issues 2025-26; FG% drag',null],
+['brooks','Dillon Brooks','PHX',['SF','SG'],16.0,4.0,2.0,0.8,0.4,2.4,.430,13.0,.820,2.5,1.6,68,150,null,null],
+['mbridges','Miles Bridges','PHX',['SF','PF'],18.0,7.0,3.5,0.9,0.6,2.2,.440,15.0,.800,4.0,2.0,66,110,null,'Traded CHA -> PHX'],
+['markw','Mark Williams','PHX',['C'],14.0,9.0,2.0,0.6,1.1,0.0,.580,9.5,.750,3.5,2.0,55,115,'Durability',null],
+['maluach','Khaman Maluach','PHX',['C'],9.0,7.0,0.8,0.5,1.5,0.1,.620,6.0,.650,2.0,1.0,70,160,null,'Yahoo all-sleeper team; may start at C'],
+['gordon','Aaron Gordon','DEN',['PF','SF'],16.0,6.0,3.0,0.7,0.7,1.9,.530,11.5,.780,3.5,1.4,60,90,'Injury history',null],
+['cjohnson','Cameron Johnson','DEN',['SF','PF'],15.0,4.5,3.0,0.8,0.5,2.6,.460,12.0,.850,2.5,1.4,62,110,null,null],
+['braun','Christian Braun','DEN',['SG','SF'],14.0,5.5,2.5,1.1,0.4,1.5,.530,10.5,.800,2.5,1.3,66,120,null,null],
+['derozan','DeMar DeRozan','DEN',['SF','SG'],15.0,3.5,3.0,0.8,0.3,1.0,.470,12.0,.850,3.5,1.4,68,110,'Age 37, reserve role in DEN','ADP 116.5 -> 110'],
+['claxton','Nic Claxton','CHI',['C'],11.0,8.0,2.2,0.8,1.5,0.0,.620,8.0,.600,2.5,1.6,60,100,'Hamstring: re-eval in 2 wks, ESPN est. return 4 Nov; FT% drag','Traded to CHI'],
+['giddey','Josh Giddey','CHI',['PG','SG'],19.0,8.5,7.5,1.3,0.6,1.8,.460,15.5,.780,4.0,3.5,68,34,null,null],
+['buzelis','Matas Buzelis','CHI',['SF','PF'],18.0,6.0,2.0,0.9,1.0,2.0,.460,14.5,.780,3.5,1.8,72,64.4,null,'Titus Rd-6 favourite'],
+['powell','Norman Powell','CHI',['SG','SF'],19.0,3.5,2.0,1.0,0.3,2.8,.470,14.0,.830,3.5,1.5,60,95,null,'Signed with CHI'],
+['cwilson','Caleb Wilson','CHI',['PF'],12.0,7.0,2.0,1.0,1.0,0.5,.480,10.0,.700,3.0,1.8,65,96.3,'Rookie; hand/finger injury history','#4 pick; ESPN sleeper'],
+['coby','Coby White','CHA',['PG','SG'],20.0,4.0,5.0,1.0,0.3,3.0,.450,16.0,.850,4.0,2.2,66,60,null,'Re-signed CHA; RotoWire target'],
+['knueppel','Kon Knueppel','CHA',['SG','SF'],18.0,5.5,4.0,1.0,0.3,3.2,.450,14.0,.870,3.0,1.5,72,55,null,'Rookie-record 273 threes'],
+['bmiller','Brandon Miller','CHA',['SF','SG'],21.0,5.0,3.5,1.1,0.6,3.0,.420,17.5,.840,4.5,2.4,55,40,'Injury history; Fantasy Six Pack bust','Went pick 35 in a Yahoo mock'],
+['naz','Naz Reid','CHA',['PF','C'],17.0,7.5,2.5,0.9,1.0,2.3,.470,14.0,.800,3.0,1.8,72,75,null,'Traded to CHA (starter)'],
+['diabate','Moussa Diabate','CHA',['C'],8.0,8.0,1.0,0.9,0.8,0.0,.620,5.0,.650,2.0,0.9,70,180,null,null],
+['mikal','Mikal Bridges','NYK',['SF','SG'],17.0,4.0,3.5,1.0,0.5,2.0,.500,13.5,.820,2.5,1.5,78,60,null,'Iron man'],
+['og','OG Anunoby','NYK',['SF','PF'],17.0,5.0,2.0,1.5,0.9,2.3,.480,13.0,.800,3.0,1.4,62,56,null,'RotoWire #56 cat; Parlae #31 9-cat'],
+['hart','Josh Hart','NYK',['SF','SG','PF'],12.0,9.0,5.0,1.3,0.3,0.8,.520,9.0,.770,2.0,2.0,70,110,null,null],
+['mrob','Mitchell Robinson','BOS',['C'],7.0,9.0,1.0,0.8,1.3,0.0,.650,4.5,.500,2.5,0.8,55,170,'FT% drag; durability','Signed with BOS (per offseason tracker)'],
+['pgeorge','Paul George','BOS',['SF','PF'],16.0,5.0,3.5,1.3,0.4,2.2,.430,13.0,.830,3.0,2.0,50,90,'Out for season opener; injury history','Traded to BOS'],
+['pritchard','Payton Pritchard','BOS',['PG','SG'],16.0,4.0,4.5,0.9,0.2,3.2,.450,13.0,.840,1.5,1.3,76,70,null,'Low-TO 3PM source'],
+['queta','Neemias Queta','BOS',['C'],11.0,9.0,1.5,0.6,1.3,0.0,.640,7.0,.680,2.5,1.3,70,140,null,'Leaguewinner 9-cat sleeper'],
+['jbrown','Jaylen Brown','PHI',['SG','SF'],22.0,5.5,4.0,1.1,0.4,2.0,.470,17.5,.760,4.5,2.6,64,30.9,'Rotoworld fade at Rd-3 ADP; usage split with Maxey/Embiid/LeBron','Traded to PHI; slid to pick 59 in Yahoo mock'],
+['lebron','LeBron James','PHI',['SF','PF'],20.0,7.0,7.0,0.9,0.5,2.0,.500,15.0,.750,4.5,3.3,55,37.5,'Age 42; ESPN bust (overdrafted on name)','Signed with PHI; pick 68 in Yahoo mock'],
+['embiid','Joel Embiid','PHI',['C'],24.0,8.5,4.0,0.8,1.1,1.2,.480,17.0,.860,8.0,3.0,40,45,'Consensus AVOID: 38 games in 25-26, 57 of 164 last two seasons',null],
+['edgecombe','VJ Edgecombe','PHI',['SG','PG'],15.0,5.0,4.0,1.4,0.5,1.8,.430,13.0,.780,3.0,2.0,68,65,null,'Projected PHI 5th starter'],
+['okongwu','Onyeka Okongwu','ATL',['C','PF'],14.0,9.0,2.5,0.9,1.0,1.0,.570,9.5,.770,2.5,1.4,70,80,null,null],
+['naw','Nickeil Alexander-Walker','ATL',['SG','SF'],16.0,4.0,4.0,1.2,0.5,2.5,.440,13.0,.820,3.0,1.8,72,100,null,'Punt-REB target (Yahoo)'],
+['mccollum','CJ McCollum','?',['PG','SG'],16.0,3.5,4.0,0.9,0.4,2.8,.430,14.0,.820,2.5,1.8,60,130,'Team could not be verified (SI projection lists ATL)',null],
+['dort','Lu Dort','ATL',['SG','SF'],10.0,4.0,1.5,1.1,0.4,2.0,.430,8.0,.800,1.5,0.9,68,200,null,'Traded to ATL'],
+['herro','Tyler Herro','MIL',['PG','SG'],23.0,5.0,6.0,0.9,0.2,3.3,.460,18.0,.880,4.0,2.8,60,45,'ADP falling','Traded to MIL in Giannis deal'],
+['turner','Myles Turner','MIL',['C'],14.0,6.5,1.5,0.8,1.7,2.0,.480,11.0,.780,2.5,1.3,68,58,null,'3s + blocks from C'],
+['kuzma','Kyle Kuzma','MIL',['PF','SF'],14.0,6.0,2.5,0.7,0.5,1.5,.450,13.0,.700,2.5,1.8,66,170,null,null],
+['ware','Kel\'el Ware','MIL',['C','PF'],13.0,10.0,1.5,0.6,1.4,0.8,.550,10.0,.700,2.0,1.5,68,102,null,'RotoWire + Parlae sleeper; traded to MIL'],
+['jaquez','Jaime Jaquez Jr.','MIL',['SF','SG'],14.0,6.0,3.5,1.0,0.3,0.5,.480,11.0,.750,3.5,1.9,70,150,null,null],
+['kpj','Kevin Porter Jr.','MIL',['PG','SG'],14.0,4.5,5.0,1.1,0.3,1.6,.450,11.5,.780,3.0,2.3,65,140,'Rotation risk','FantasyGOATs Rd 10-11 sleeper'],
+['rollins','Ryan Rollins','MIL',['PG','SG'],12.0,3.0,4.0,1.2,0.3,1.5,.450,9.5,.800,2.0,1.6,68,180,null,null],
+['portis','Bobby Portis','MIA',['PF','C'],12.0,7.0,2.0,0.6,0.4,1.5,.460,10.0,.800,2.0,1.2,65,190,null,'Traded to MIA'],
+['wiggins','Andrew Wiggins','MIA',['SF','SG'],17.0,4.5,3.0,1.1,0.6,2.0,.450,13.5,.780,3.5,1.6,62,99.1,null,'ADP 115.9 -> 99.1 after Herro exit'],
+['davion','Davion Mitchell','MIA',['PG'],10.0,3.0,5.0,1.0,0.2,1.3,.480,8.0,.740,1.5,1.8,72,200,null,null],
+['klay','Klay Thompson','MIA',['SG','SF'],13.0,3.5,2.0,0.7,0.3,2.8,.410,11.0,.860,1.5,1.1,65,200,'MIA signing reported as expected, not confirmed',null],
+['allen','Jarrett Allen','CLE',['C'],13.0,9.5,2.0,0.8,0.9,0.0,.680,8.5,.720,3.0,1.4,74,65,null,null],
+['harden','James Harden','CLE',['PG','SG'],20.0,5.0,8.0,1.3,0.5,2.6,.410,15.0,.870,6.5,4.0,68,35,'FG%/TO drag','Traded to CLE'],
+['pwatson','Peyton Watson','CLE',['SF','PF'],12.0,4.5,1.5,0.8,1.3,1.3,.460,9.5,.720,2.5,1.2,70,150,null,'Sign-and-trade to CLE; projected starter'],
+['garland','Darius Garland','LAC',['PG'],19.0,3.0,6.5,1.2,0.2,2.6,.460,14.5,.870,3.0,2.6,58,72,'Toe surgery history','Traded to LAC; RotoWire value'],
+['ingram','Brandon Ingram','LAC',['SF','PF'],21.0,5.5,4.0,0.8,0.5,2.0,.460,16.5,.840,4.5,2.4,55,70,'OUT: ESPN lists return ~8 Nov (Achilles)','Traded to LAC'],
+['rui','Rui Hachimura','LAC',['PF','SF'],14.0,5.0,1.3,0.7,0.4,1.5,.500,11.0,.780,2.0,0.9,66,160,null,'Signed with LAC'],
+['ijackson','Isaiah Jackson','LAC',['C'],9.0,6.5,1.0,0.5,1.5,0.0,.600,6.0,.650,2.0,1.0,65,200,null,null],
+['strus','Max Strus','LAC',['SG','SF'],10.0,4.0,3.0,0.7,0.3,2.3,.430,8.5,.800,1.0,1.1,60,220,'Out for opener (foot)',null],
+['mathurin','Bennedict Mathurin','LAC',['SG','SF'],17.0,5.0,2.5,0.8,0.2,2.0,.450,13.5,.840,5.0,1.9,64,120,null,'Traded to LAC in Zubac deal'],
+['kyrie','Kyrie Irving','DAL',['PG','SG'],22.0,4.0,5.0,1.2,0.4,3.0,.470,17.0,.900,4.5,2.2,55,42,'ACL (Mar 2025) return; 2026-27 status not verified',null],
+['pjw','PJ Washington','DAL',['PF','SF'],14.0,7.5,2.5,1.1,0.9,1.6,.470,11.0,.700,3.0,1.5,66,95,null,null],
+['lively','Dereck Lively II','DAL',['C'],9.0,8.0,1.3,0.6,1.6,0.0,.680,6.0,.650,2.0,1.2,55,120,'Durability',null],
+['christie','Max Christie','DAL',['SG','SF'],12.0,4.0,2.5,1.0,0.4,1.8,.450,10.0,.800,2.0,1.2,70,180,null,null],
+['gafford','Daniel Gafford','DAL',['C'],10.0,6.5,1.0,0.5,1.4,0.0,.680,6.5,.650,2.0,1.0,60,170,null,null],
+['keegan','Keegan Murray','SAC',['SF','PF'],13.0,6.5,2.0,1.0,0.8,2.0,.440,11.5,.780,1.5,1.0,68,100,null,'Leaguewinner 9-cat sleeper'],
+['lavine','Zach LaVine','SAC',['SG','SF'],21.0,4.0,3.5,0.9,0.3,3.0,.480,16.0,.840,4.5,2.5,62,62,null,'ADP rising'],
+['acuff','Darius Acuff Jr.','SAC',['PG'],13.0,3.0,5.0,1.0,0.2,1.8,.410,12.0,.820,3.0,2.4,68,140,'Rookie','SportsLine breakout; projected starter'],
+['hunter','De\'Andre Hunter','SAC',['SF','PF'],15.0,4.0,1.5,0.7,0.3,2.4,.450,12.0,.840,2.5,1.2,66,180,null,null],
+['monk','Malik Monk','SAC',['SG','PG'],15.0,3.0,5.0,0.9,0.3,2.0,.440,12.0,.850,3.5,2.3,60,150,null,null],
+['trae','Trae Young','WAS',['PG'],23.0,3.5,10.5,1.0,0.2,2.8,.410,18.5,.870,7.0,4.4,64,32,'FG%/TO drag; FantasyGOATs roster-fit caution','Signed 4-yr with WAS'],
+['dybantsa','AJ Dybantsa','WAS',['SF','SG'],17.0,4.5,2.5,1.0,0.5,1.5,.430,15.0,.780,5.0,2.3,66,78.9,'Rookie efficiency risk','#1 pick; slid to 120 in Yahoo mock'],
+['sarr','Alex Sarr','WAS',['C','PF'],15.0,8.0,2.5,0.8,1.8,1.3,.450,13.0,.720,2.5,1.8,66,52,'FG% drag',null],
+['kgeorge','Kyshawn George','WAS',['SF','SG'],13.0,5.0,3.5,1.1,0.8,2.2,.430,11.0,.780,2.0,1.8,70,130,null,null],
+['coulibaly','Bilal Coulibaly','WAS',['SF','SG'],11.0,5.0,3.0,1.3,0.6,1.3,.430,9.5,.700,2.0,1.6,60,190,null,null],
+['carrington','Bub Carrington','WAS',['PG'],10.0,4.0,4.5,0.8,0.2,1.8,.410,9.0,.800,1.5,1.7,70,190,null,null],
+['siakam','Pascal Siakam','IND',['PF','SF'],20.0,7.0,3.5,1.0,0.5,1.6,.510,15.5,.760,4.0,1.7,70,40,null,null],
+['nembhard','Andrew Nembhard','IND',['PG','SG'],14.0,3.5,6.0,1.1,0.2,1.4,.460,11.5,.800,2.0,2.0,65,110,null,null],
+['nesmith','Aaron Nesmith','IND',['SF','SG'],13.0,5.0,1.5,0.8,0.5,2.4,.460,10.0,.850,1.5,0.8,65,150,null,null],
+['toppin','Obi Toppin','IND',['PF'],12.0,5.0,2.0,0.7,0.6,2.0,.490,9.5,.750,2.0,1.1,68,170,null,null],
+['kuminga','Jonathan Kuminga','MIN',['SF','PF'],14.0,5.5,2.0,0.8,0.5,1.0,.470,11.0,.700,3.5,1.6,64,150,null,'Signed with MIN; projected starter'],
+['gobert','Rudy Gobert','MIN',['C'],11.0,11.0,1.5,0.7,1.5,0.0,.680,7.0,.650,3.0,1.5,70,60,'FT% drag',null],
+['mcdaniels','Jaden McDaniels','MIN',['SF','PF'],14.0,5.5,2.0,1.3,0.9,1.6,.470,11.5,.780,2.0,1.4,74,85,null,'Leaguewinner 9-cat sleeper'],
+['beringer','Joan Beringer','MIN',['C'],7.0,6.0,0.8,0.5,1.4,0.0,.620,5.0,.600,1.5,0.9,65,200,null,'2nd-year breakout candidate (RotoWire/Yahoo)'],
+['hartenstein','Isaiah Hartenstein','OKC',['C'],11.0,10.5,3.8,0.9,1.0,0.0,.580,8.0,.700,2.5,1.6,60,85,null,null],
+['wallace','Cason Wallace','OKC',['PG','SG'],10.0,3.5,2.5,1.8,0.6,1.6,.470,8.0,.780,1.2,0.9,72,110,null,'Led NBA in total steals; starter after Dort trade'],
+['amitchell','Ajay Mitchell','OKC',['PG','SG'],12.0,3.0,4.0,1.0,0.3,1.3,.470,9.0,.850,2.5,1.5,70,160,null,'RotoWire late-round upside'],
+['caruso','Alex Caruso','OKC',['PG','SG'],7.0,3.0,2.5,1.6,0.6,1.2,.450,5.5,.800,1.0,1.0,60,220,null,null],
+['draymond','Draymond Green','GSW',['PF','C'],9.0,6.0,5.5,1.5,1.0,1.1,.430,7.5,.700,1.5,2.2,60,100,'Age 36',null],
+['podz','Brandin Podziemski','GSW',['SG','PG'],13.0,5.5,4.0,1.0,0.3,2.0,.440,11.0,.780,1.5,1.8,66,120,null,null],
+['butler','Jimmy Butler','GSW',['SF','PF'],18.0,5.5,5.0,1.4,0.4,0.8,.470,12.0,.850,6.0,1.6,40,70,'OUT until at least 2 Jan (ESPN)','IL stash only'],
+['porzingis','Kristaps Porzingis','GSW',['PF','C'],18.0,7.0,2.0,0.7,1.6,2.2,.470,13.5,.800,4.0,1.6,40,70,'OUT indefinitely; ESPN est. return 1 Dec','IL stash only'],
+['horford','Al Horford','GSW',['C'],7.0,5.0,2.0,0.6,0.9,1.4,.440,6.0,.750,0.5,0.7,55,220,'Age 40',null],
+['lendeborg','Yaxel Lendeborg','GSW',['SF','PF'],9.0,5.5,2.0,0.8,0.7,1.0,.470,7.5,.700,1.5,1.2,65,220,'Rookie','Projected GSW starter'],
+['fvv','Fred VanVleet','HOU',['PG'],13.0,3.5,5.5,1.3,0.4,2.4,.400,11.5,.850,2.0,1.6,55,120,'ACL (Sept 2025); return status not verified',null],
+['jabari','Jabari Smith Jr.','HOU',['PF','C'],13.0,7.5,1.3,0.7,0.8,1.8,.450,11.0,.800,2.0,1.0,70,110,null,null],
+['eason','Tari Eason','HOU',['SF','PF'],12.0,6.0,1.5,1.5,0.8,1.2,.480,9.5,.700,2.5,1.2,60,130,'Crowded HOU rotation','FantasyGOATs Rd-11 sleeper'],
+['sheppard','Reed Sheppard','HOU',['PG','SG'],12.0,3.0,4.0,1.3,0.5,2.4,.430,10.0,.850,1.5,1.6,72,125,null,null],
+['ayton','Deandre Ayton','?',['C'],13.0,9.0,1.5,0.6,1.0,0.0,.580,10.0,.680,3.0,1.5,60,120,'Team/role not verified after LAL added Kessler',null],
+['mamu','Sandro Mamukelashvili','LAL',['PF','C'],11.0,6.0,2.0,0.7,0.6,1.5,.520,8.5,.750,2.0,1.2,70,200,null,'Signed 4-yr with LAL'],
+['grant','Jerami Grant','MEM',['PF','SF'],15.0,4.0,2.5,0.8,0.6,2.2,.420,12.5,.820,4.0,1.7,60,170,null,'Traded to MEM'],
+['boozer','Cameron Boozer','MEM',['PF'],16.0,9.0,3.5,1.1,0.9,0.8,.500,13.0,.750,4.0,2.2,68,85,'Rookie','NBC #1 rookie; Day-1 starter'],
+['coward','Cedric Coward','MEM',['SF','SG'],15.0,5.5,2.5,1.0,0.6,2.0,.470,12.0,.800,2.5,1.5,68,107.4,null,'Top-100 value final month of 25-26; Karabell breakout'],
+['jerome','Ty Jerome','MEM',['PG','SG'],15.0,3.5,5.0,1.1,0.2,2.2,.460,12.0,.880,2.5,1.8,66,99.9,null,'NBA Fantasy Edge: ADP 173 vs 9-cat rank 49'],
+['pippen','Scotty Pippen Jr.','MEM',['PG'],12.0,3.5,5.5,1.3,0.3,1.5,.450,10.0,.800,2.0,2.0,68,170,null,'Karabell breakout'],
+['edey','Zach Edey','MEM',['C'],11.0,9.5,1.0,0.5,1.3,0.1,.590,7.5,.700,2.5,1.3,55,115,'Ankle history',null],
+['stewart','Isaiah Stewart','MEM',['PF','C'],10.0,7.0,1.5,0.6,1.3,0.7,.530,7.0,.700,2.0,1.4,60,200,'Expected to miss opener',null],
+['keyonte','Keyonte George','UTA',['PG','SG'],20.0,4.0,6.0,1.0,0.3,2.8,.420,16.0,.820,4.5,3.0,66,60,'FG%/TO drag','Went pick 5 in one Yahoo mock (outlier)'],
+['peterson','Darryn Peterson','UTA',['SG','PG'],17.0,4.0,3.5,1.3,0.4,2.2,.420,15.0,.800,4.0,2.4,64,90,'Rookie FG% drag',null],
+['nurkic','Jusuf Nurkic','UTA',['C'],10.0,9.0,2.5,0.8,0.8,0.5,.500,8.0,.700,2.5,1.8,50,200,'OUT 4+ weeks (plantar plate)',null],
+['bailey','Ace Bailey','UTA',['SF','SG'],15.0,5.0,2.0,0.8,0.7,2.0,.430,13.5,.750,2.5,1.6,66,120,null,null],
+['filipowski','Kyle Filipowski','UTA',['PF','C'],12.0,7.5,2.5,0.6,0.5,1.5,.500,9.5,.700,1.5,1.3,70,160,null,null],
+['randle','Julius Randle','BKN',['PF'],20.0,8.0,5.5,0.9,0.4,1.5,.480,15.0,.770,5.0,3.0,68,70,null,'Karabell "Do Draft"; traded to BKN'],
+['mpj','Michael Porter Jr.','BKN',['SF','PF'],21.0,7.0,2.5,0.7,0.5,3.0,.480,16.0,.830,3.0,1.8,64,55,null,null],
+['dsharpe','Day\'Ron Sharpe','BKN',['C'],10.0,8.0,2.0,0.7,0.9,0.2,.560,7.0,.650,2.0,1.5,70,150,null,'NBA Fantasy Edge: ADP 217 vs 9-cat rank 90; projected starter'],
+['demin','Egor Demin','BKN',['PG'],10.0,4.0,5.5,1.0,0.3,1.6,.400,9.5,.750,1.5,2.3,68,180,'FG% drag',null],
+['kellis','Keon Ellis','BKN',['SG'],10.0,3.0,2.0,1.5,0.5,2.0,.450,7.5,.850,1.0,0.9,70,190,null,null],
+['cmb','Collin Murray-Boyles','TOR',['PF','C'],11.0,7.0,2.5,1.2,1.0,0.3,.550,8.5,.650,2.5,1.5,70,130,null,'2nd-year breakout; punt-3PM target'],
+['quickley','Immanuel Quickley','TOR',['PG'],16.0,3.5,5.5,0.9,0.2,2.6,.430,13.0,.880,3.0,1.8,60,100,null,null],
+['rj','RJ Barrett','TOR',['SF','SG'],19.0,5.5,4.5,0.8,0.3,1.6,.460,15.0,.720,5.0,2.5,58,95,'FT% drag',null],
+['poeltl','Jakob Poeltl','TOR',['C'],12.0,9.0,2.5,0.8,1.1,0.0,.620,8.5,.600,2.5,1.5,66,90,'ESPN: overpriced (26th C off board); FT% drag',null],
+['dick','Gradey Dick','LAC',['SG'],12.0,3.0,1.5,0.7,0.2,2.2,.420,10.5,.820,1.5,1.0,65,220,null,null],
+['vucevic','Nikola Vucevic','?',['C'],16.0,9.0,3.0,0.7,0.7,1.6,.520,13.0,.800,2.5,1.5,64,85,'Team could not be verified (not in projected CHI five)',null],
+['risacher','Zaccharie Risacher','ATL',['SF'],13.0,4.0,1.5,0.8,0.5,1.8,.460,10.5,.750,2.0,1.1,70,160,null,null],
+['tharris','Tobias Harris','SAS',['PF','SF'],13.0,6.0,2.5,0.7,0.5,1.6,.470,10.5,.820,2.0,1.2,68,180,null,'Signed with SAS'],
+['vassell','Devin Vassell','SAS',['SG','SF'],15.0,4.0,2.5,1.0,0.4,2.4,.450,12.5,.800,2.0,1.3,66,130,null,null],
+['gallen','Grayson Allen','CHA',['SG'],11.0,3.0,3.0,0.9,0.3,2.6,.440,9.0,.870,1.0,1.2,66,180,null,'Traded to CHA'],
+['bitadze','Goga Bitadze','ORL',['C'],8.0,7.0,1.5,0.7,1.4,0.0,.580,5.5,.650,1.5,1.0,65,200,null,null],
+['wcj','Wendell Carter Jr.','ORL',['C','PF'],11.0,8.0,2.0,0.7,0.7,1.2,.460,9.0,.750,2.5,1.4,62,150,null,null],
+['black','Anthony Black','ORL',['PG','SG'],11.0,3.5,3.5,1.1,0.5,1.3,.440,9.0,.750,2.5,1.6,72,170,null,null],
+['ighodaro','Oso Ighodaro','PHX',['C'],8.0,6.0,2.0,0.7,0.9,0.0,.600,5.5,.600,1.5,1.0,70,220,null,null],
+['mccain','Jared McCain','PHI',['SG','PG'],12.0,3.0,3.0,0.8,0.2,2.2,.430,10.0,.850,2.0,1.4,60,180,null,null],
+['jovic','Nikola Jovic','MIA',['PF'],11.0,5.0,3.0,0.8,0.3,1.6,.450,9.0,.780,1.5,1.5,60,200,null,null],
+['valanciunas','Jonas Valanciunas','DEN',['C'],10.0,7.0,2.0,0.5,0.6,0.2,.550,7.5,.780,2.5,1.5,70,220,null,null],
+['hayes','Jaxson Hayes','LAL',['C'],8.0,6.0,1.0,0.5,1.0,0.0,.650,5.5,.650,1.5,0.9,65,230,null,null],
+['jwells','Jaylen Wells','MEM',['SG','SF'],11.0,3.5,2.0,0.8,0.3,1.8,.430,9.5,.800,1.5,1.0,68,220,null,null],
+['sochan','Jeremy Sochan','SAS',['PF','SF'],11.0,6.5,2.5,1.0,0.6,0.6,.500,8.5,.650,2.0,1.5,65,210,null,null],
+['aldama','Santi Aldama','MEM',['PF','C'],12.0,6.5,2.5,0.7,0.6,1.8,.470,9.5,.750,2.0,1.1,66,180,null,null],
+];
+
+const PLAYERS = ROWS.map(r => ({
+  id: r[0], name: r[1], team: r[2], positions: r[3],
+  pts: r[4], reb: r[5], ast: r[6], stl: r[7], blk: r[8], tpm: r[9],
+  fgp: r[10], fga: r[11], ftp: r[12], fta: r[13], tov: r[14], gp: r[15],
+  adp: r[16], risk: r[17], note: r[18],
+}));
+
+const DATA_META = {
+  checkedAt: '2026-10-20T07:30Z (18:30 AEDT)',
+  method: 'Analyst per-game estimates from 2025-26 baseline + confirmed 2026 offseason moves; ADP only where quoted by a source snippet.',
+  limitation: 'All ranking sites (RotoBaller, Yahoo, ESPN, RotoWire, Parlae, nba.com, etc.) were blocked by the session network policy; only web-search summaries were available. Numbers are estimates, not official projections.',
+};
+
+// Sources consulted via web search on 20 Oct 2026 (~07:00-07:40 UTC / 18:00-18:40 AEDT).
+// Direct page fetches were blocked by the session's network policy; only search summaries were readable.
+const SOURCES = [
+  { title: 'RotoBaller 2026-27 9-cat rankings & tiers', url: 'https://www.rotoballer.com/fantasy-basketball-rankings-tiers-2026-2027-9-category-league-drafts/1969000', status: 'blocked (summary only): Tier 1 Jokic/Wembanyama/SGA; Tier 2 Maxey, Edwards, Barnes, Flagg' },
+  { title: 'Yahoo 9-cat mock draft 2.0', url: 'https://sports.yahoo.com/articles/fantasy-basketball-9-cat-mock-100900282.html', status: 'blocked (summary only): Jokic #1, Durant pick 10 (ADP 15.9), J. Brown pick 59 (ADP 30.9), LeBron pick 68, Dybantsa pick 120 (ADP 78.9)' },
+  { title: 'Yahoo last-minute draft tips', url: 'https://sports.yahoo.com/fantasy/article/fantasy-basketball-6-last-minute-tips-to-help-you-nail-your-drafts-185627355.html', status: 'blocked: could not be read' },
+  { title: 'ESPN 2026-27 draft guide', url: 'https://www.espn.com/fantasy/basketball/story/_/id/50075156/fantasy-basketball-draft-guide-rankings-mock-drafts-sleepers-projections-analysis', status: 'blocked (summaries of ESPN lists): Karabell Do-Draft Randle, Castle, Reaves, J. Johnson, Sabonis, Sengun; Do-Not-Draft Kawhi, LaMelo; busts LeBron, Morant, Poeltl' },
+  { title: 'RotoWire 2026-27 draft guide', url: 'https://www.rotowire.com/basketball/article/fantasy-basketball-draft-guide-2026-27-140284', status: 'blocked (summary only): platform ADP gaps; sleepers Ware, Ausar Thompson, Garland, Ajay Mitchell; fade Morant, Fox' },
+  { title: 'Yahoo Dan Titus top-250 9-cat (29 Sep 2026)', url: 'https://sports.yahoo.com/fantasy/article/2026-fantasy-basketball-rankings-top-250-players-9-category-192819590.html', status: 'blocked; partial order from summaries' },
+  { title: 'Titus favourite picks per round', url: 'https://www.nba.com/news/nba-fantasy-favorite-picks-in-each-round-12-team-league', status: 'summary: Rd1 Maxey (ADP 9.4), Rd2 Reaves (23.3), Rd6 Buzelis (64.4)' },
+  { title: 'ADP risers/fallers (RotoWire via Yahoo, 20 Sep-4 Oct)', url: 'https://sports.yahoo.com/articles/2026-27-fantasy-basketball-adp-074600811.html', status: 'summary: Haliburton 18.7->14.9, Jrue 118.3->115.5, Wiggins 115.9->99.1, DeRozan 116.5->110, Dejounte 67.8->64.1, Lillard 69.7->67.6, Avdija 45->48.6, Bane 52.4->56.4' },
+  { title: 'Injury news (ESPN/RotoWire/Fantasy Alarm summaries, 19-20 Oct)', url: 'https://www.espn.com/nba/injuries', status: 'Simmons Achilles (season); Porzingis out (est 1 Dec); Butler out (est 2 Jan); Moody out (est 1 Dec); Ingram out (est 8 Nov); Nurkic 4+ wks; Claxton re-eval 2 wks; Curry ankle GTD/expected to play; Strus out opener; Stewart to miss opener; P. George out opener' },
+  { title: 'Offseason moves (ESPN/CBS/NBA.com summaries)', url: 'https://www.nba.com/news/nba-offseason-deals-2026', status: 'Giannis+Portis to MIA (Herro, Ware, Jaquez, Jakucionis to MIL); Kawhi to TOR (Ingram, Dick to LAC); J. Brown to PHI (P. George to BOS); LeBron signed PHI; Morant to POR; Kessler to LAL; LaMelo to MIN / Naz Reid to CHA; Kuminga MIN; Zubac to IND (Feb); AD + Trae to WAS (in-season); JJJ to UTA; Harden to CLE; Garland to LAC; Dort to ATL; Bridges to PHX; Watson to CLE; Powell CHI; T. Harris SAS; Randle BKN; Claxton CHI' },
+  { title: 'Sleepers (RotoWire, Yahoo, DK, Parlae, Leaguewinner, FantasyGOATs summaries)', url: 'https://www.rotowire.com/basketball/article/top-fantasy-basketball-sleepers-2026-27-140324', status: 'Coward, Murray-Boyles, Beringer, Maluach, Suggs, Ty Jerome, Cason Wallace, KPJ, Eason, Ware, Day\'Ron Sharpe, Keegan Murray, McDaniels, Queta, Dyson Daniels, Kessler, Caleb Wilson, Randle' },
+  { title: 'Yahoo Fantasy Sports API', url: 'https://sports.yahoo.com/developer/', status: 'OAuth 2.0 with registered app (client id/secret + redirect URI) and signed API agreement required; no credentials exist in this environment, so NO live integration is implemented' },
+];
+
+const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick };
+// UI layer — vanilla JS, mobile-first. All logic lives in engine.js.
+
+
+
+const STORAGE_KEY = 'cgw-draft-v1';
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let state = load() || E.createState();
+let history = []; // undo stack of previous states
+let view = state.mySlot ? 'draft' : 'setup';
+let search = '';
+let timerEnd = null; let timerHandle = null;
+let pendingAmbiguous = null; // { names: [], index, candidates }
+let playersFilter = 'avail';
+let detailId = null;
+let dialog = null; // in-page replacement for the browser dialogs the artifact viewer blocks: { text, input?, value?, buttons: [{label, primary, onClick(value)}] }
+function ask(d) { dialog = d; render(); }
+function notify(msg) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(notify._t); notify._t = setTimeout(() => el.classList.remove('show'), 4500);
+}
+
+function load() { try { const s = JSON.parse(localStorage.getItem(STORAGE_KEY)); return s && s.picks ? s : null; } catch { return null; } }
+function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
+function setState(next, { undoable = true } = {}) { if (undoable) history.push(state); if (history.length > 50) history.shift(); state = next; save(); render(); }
+
+function valued() {
+  const weights = {}; for (const k of state.punts || []) weights[k] = 0;
+  return E.computeValues(PLAYERS, { gpWeight: state.gpWeight !== false, weights });
+}
+
+function ctx() {
+  const all = valued();
+  const byId = Object.fromEntries(all.map(p => [p.id, p]));
+  const overall = E.currentOverall(state);
+  const onClock = E.teamOnClock(Math.min(overall, state.numTeams * E.ROSTER_SIZE), state.numTeams);
+  const myNext = state.mySlot ? E.nextPickForSlot(state.mySlot, state.numTeams, overall) : null;
+  const myFollowing = state.mySlot ? E.followingPickForSlot(state.mySlot, state.numTeams, myNext ?? overall) : null;
+  const roster = E.myRoster(state, all);
+  const avail = E.availablePlayers(state, all);
+  const rec = E.recommend(avail, roster, { punts: state.punts, currentPick: myNext ?? overall, nextPick: myFollowing ?? (myNext ?? overall) + state.numTeams, });
+  return { all, byId, overall, onClock, myNext, myFollowing, roster, avail, rec, done: overall > state.numTeams * E.ROSTER_SIZE };
+}
+
+// ---------- rendering ----------
+function render() {
+  const root = $('#app');
+  const c = ctx();
+  root.innerHTML = `
+    ${view !== 'setup' ? header(c) : ''}
+    <main class="main">${view === 'setup' ? setupView(c) : view === 'draft' ? draftView(c) : view === 'players' ? playersView(c) : strategyView(c)}</main>
+    ${view !== 'setup' ? nav() : ''}
+    ${detailId ? detailModal(c) : ''}
+    ${pendingAmbiguous ? ambiguousModal() : ''}
+    ${dialog ? dialogModal() : ''}
+  `;
+  bind(c);
+}
+
+function header(c) {
+  const mine = state.mySlot && c.onClock === state.mySlot && !c.done;
+  const t = timerEnd ? Math.max(0, Math.ceil((timerEnd - Date.now()) / 1000)) : null;
+  return `<header class="hdr ${mine ? 'mine' : ''}">
+    <div class="hdr-row">
+      <div><div class="hdr-k">Pick</div><div class="hdr-v">${c.done ? 'Done' : `${c.overall} <span class="muted">(R${E.roundOf(c.overall, state.numTeams)}.${E.pickInRound(c.overall, state.numTeams)})</span>`}</div></div>
+      <div><div class="hdr-k">On clock</div><div class="hdr-v">${c.done ? '—' : mine ? 'YOU' : esc(state.teamNames[c.onClock - 1])}</div></div>
+      <div><div class="hdr-k">Your next</div><div class="hdr-v">${c.myNext ? `#${c.myNext}` : '—'}${c.myNext && c.myNext !== c.overall ? ` <span class="muted">(${c.myNext - c.overall} away)</span>` : ''}</div></div>
+      <div class="timer ${t != null && t <= 15 ? 'hot' : ''}" id="timer">${t != null ? `${t}s` : '<button class="btn-xs" id="startTimer">60s</button>'}</div>
+    </div>
+  </header>`;
+}
+
+function nav() {
+  const b = (id, label) => `<button class="nav-btn ${view === id ? 'on' : ''}" data-view="${id}">${label}</button>`;
+  return `<nav class="nav">${b('draft', 'Draft Now')}${b('players', 'Players')}${b('strategy', 'Strategy')}</nav>`;
+}
+
+function setupView() {
+  const slots = Array.from({ length: state.numTeams }, (_, i) => i + 1);
+  return `<section class="card">
+    <h1>CG Worldwide League — Draft War Room</h1>
+    <p class="muted">Yahoo league 60156 · 2026-27 · 10 teams · H2H 9-cat · snake · 1-min clock</p>
+    <h2>1. League settings (locked to your brief)</h2>
+    <ul class="compact">
+      <li>Cats: FG%, FT%, 3PM, PTS, REB, AST, ST, BLK, TO (lower is better)</li>
+      <li>Roster: PG, SG, G, SF, PF, F, C, C, Util, Util, BN×3, IL×4 → 13 draft rounds</li>
+    </ul>
+    <h2>2. Your draft slot</h2>
+    <div class="slot-grid">${slots.map(s => `<button class="slot-btn ${state.mySlot === s ? 'on' : ''}" data-slot="${s}">${s}</button>`).join('')}</div>
+    <p class="muted">Not announced yet? Pick your best guess now — you can change it from Strategy at any time; nothing is lost.</p>
+    <h2>3. Team names (optional)</h2>
+    <details><summary>Edit team names in draft order</summary>
+      ${state.teamNames.map((n, i) => `<label class="row"><span>Slot ${i + 1}</span><input data-team="${i}" value="${esc(n)}" /></label>`).join('')}
+    </details>
+    <h2>4. Rankings</h2>
+    <p>Built-in pool: ${PLAYERS.length} players with analyst 9-cat estimates (checked ${esc(DATA_META.checkedAt)}). Review the plan under Strategy before the draft.</p>
+    <button class="btn-primary big" id="startDraft" ${state.mySlot ? '' : 'disabled'}>Open the War Room</button>
+  </section>`;
+}
+
+function catChips(p, { punts = [] } = {}) {
+  return E.CATS.map(c => {
+    const z = p.z?.[c.key] ?? 0;
+    const cls = punts.includes(c.key) ? 'punt' : z >= 1 ? 'good2' : z >= 0.4 ? 'good' : z <= -1 ? 'bad2' : z <= -0.4 ? 'bad' : '';
+    return `<span class="chip ${cls}" title="z=${z.toFixed(2)}">${c.label}</span>`;
+  }).join('');
+}
+
+function statLine(p) {
+  return `${p.pts} pts · ${p.reb} reb · ${p.ast} ast · ${p.stl} st · ${p.blk} blk · ${p.tpm} 3pm · FG ${(p.fgp * 100).toFixed(1)}% (${p.fga}) · FT ${(p.ftp * 100).toFixed(1)}% (${p.fta}) · ${p.tov} to · ~${p.gp} gp`;
+}
+
+function candCard(cnd, c, { primary = false } = {}) {
+  const p = cnd.player;
+  return `<div class="cand ${primary ? 'primary' : ''}">
+    <div class="cand-top">
+      <div>
+        <div class="cand-name">${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></div>
+        <div class="muted small">Model #${p.modelRank}${typeof p.adp === 'number' ? ` · ADP ~${p.adp}` : ' · ADP n/a'}${cnd.likelyGone === true ? ' · <b>likely gone before your next pick</b>' : cnd.likelyGone === false ? ' · may still be there next pick' : ''}</div>
+      </div>
+      <div class="cand-actions">
+        <button class="btn-primary" data-draft-me="${p.id}">Draft ME</button>
+        <button class="btn-ghost" data-draft-other="${p.id}">Taken</button>
+      </div>
+    </div>
+    ${primary ? `
+      <ol class="why">${cnd.reasons.map(r => `<li>${esc(r)}</li>`).join('') || '<li>Best remaining 9-cat value for your roster</li>'}</ol>
+      <div class="chips">${catChips(p, { punts: state.punts })}</div>
+      ${cnd.weaknesses.length ? `<div class="small">Weak: ${cnd.weaknesses.join(', ')}</div>` : ''}
+      <div class="small">Roster fit: ${fitText(cnd, c)}</div>
+      ${cnd.flags.length ? `<div class="flag">⚠ ${cnd.flags.map(esc).join(' · ')}</div>` : '<div class="small ok">No major risk flag</div>'}
+      ${cnd.adpNote ? `<div class="small">${esc(cnd.adpNote)}</div>` : '<div class="small muted">ADP: no reliable number for this player</div>'}
+      <details class="small"><summary>Details</summary><div>${esc(statLine(p))}</div>${p.note ? `<div>${esc(p.note)}</div>` : ''}<div class="muted">Score ${cnd.score.toFixed(2)} (9-cat z ${cnd.baseZ.toFixed(2)})</div></details>
+    ` : `<div class="chips">${catChips(p, { punts: state.punts })}</div>${cnd.flags.length ? `<div class="flag small">⚠ ${cnd.flags.map(esc).join(' · ')}</div>` : ''}`}
+  </div>`;
+}
+
+function fitText(cnd, c) {
+  const open = c.rec.open;
+  if (!open.length) return 'roster full';
+  const fits = open.filter(s => E.canFillSlot(s, cnd.player.positions));
+  return fits.length ? `fills ${[...new Set(fits)].join('/')} (open: ${open.join(', ')})` : `no open slot (open: ${open.join(', ')})`;
+}
+
+function draftView(c) {
+  if (c.done) return `<section class="card"><h2>Draft complete</h2>${rosterPanel(c)}</section>`;
+  const mine = state.mySlot && c.onClock === state.mySlot;
+  const rec = c.rec;
+  const until = c.myNext && c.myNext > c.overall ? c.myNext - c.overall : 0;
+  return `
+    <section class="card quick">
+      <form id="takenForm" class="taken-form">
+        <input id="takenInput" placeholder="TAKEN: name, name, name  (or one name)" autocomplete="off" />
+        <button class="btn-primary" type="submit">Mark taken</button>
+      </form>
+      <div class="row-btns">
+        <button class="btn-ghost" id="undo" ${state.picks.length ? '' : 'disabled'}>↶ Undo last pick</button>
+        <span class="muted small">${state.picks.length} picks logged</span>
+      </div>
+    </section>
+    <section class="card ${mine ? 'mine-card' : ''}">
+      <div class="label">${mine ? 'YOUR PICK — BEST PICK NOW' : `BEST PICK IF IT WERE YOUR TURN (${until} pick${until === 1 ? '' : 's'} until #${c.myNext ?? '—'})`}</div>
+      ${rec.best ? candCard(rec.best, c, { primary: true }) : '<p>No players available.</p>'}
+      <div class="conf conf-${rec.confidence}">Confidence: <b>${rec.confidence.toUpperCase()}</b> — ${esc(rec.confidenceWhy)}</div>
+      <div class="label">BACKUPS</div>
+      ${rec.backups.map(b => candCard(b, c)).join('')}
+      ${!mine && until > 0 ? `<details class="small"><summary>Targets likely to survive ${until} picks</summary>${rec.candidates.slice(0, 12).filter(x => x.likelyGone === false).slice(0, 5).map(x => `<div>${esc(x.player.name)} (ADP ~${x.player.adp})</div>`).join('') || '<div class="muted">Nobody in the top 12 has an ADP late enough to count on.</div>'}</details>` : ''}
+    </section>
+    <section class="card">${rosterPanel(c)}</section>
+    <section class="card"><details><summary>Draft ledger (${state.picks.length})</summary>${ledger(c)}</details></section>`;
+}
+
+function rosterPanel(c) {
+  const a = E.assignRoster(c.roster);
+  const prof = c.rec.profile;
+  return `<div class="label">YOUR ROSTER (${c.roster.length}/${E.ROSTER_SIZE})</div>
+    <div class="roster">${a.assignments.map(x => `<div class="rslot ${x.player ? 'filled' : ''}"><span class="rs">${x.slot}</span><span>${x.player ? esc(x.player.name) : '<span class="muted">open</span>'}</span></div>`).join('')}</div>
+    <div class="label">CATEGORY BALANCE (sum of z)</div>
+    <div class="bars">${E.CATS.map(k => { const v = prof[k.key] || 0; const w = Math.min(100, Math.abs(v) / 6 * 100); return `<div class="bar"><span class="bl">${k.label}</span><div class="bt"><div class="bf ${v >= 0 ? 'pos' : 'neg'} ${state.punts.includes(k.key) ? 'punt' : ''}" style="width:${w}%"></div></div><span class="bv">${v >= 0 ? '+' : ''}${v.toFixed(1)}</span></div>`; }).join('')}</div>`;
+}
+
+function ledger(c) {
+  if (!state.picks.length) return '<p class="muted">No picks yet.</p>';
+  return `<div class="ledger">${[...state.picks].reverse().map(p => `<div><b>#${p.overall}</b> ${esc(state.teamNames[p.slot - 1])}${p.slot === state.mySlot ? ' (you)' : ''}: ${esc(c.byId[p.playerId]?.name || p.playerId)}</div>`).join('')}</div>`;
+}
+
+function playersView(c) {
+  const q = E.normaliseName(search);
+  let list = playersFilter === 'avail' ? c.avail : playersFilter === 'drafted' ? c.all.filter(p => E.draftedIds(state).has(p.id)) : c.all;
+  if (q) list = list.filter(p => E.normaliseName(p.name).includes(q) || p.team.toLowerCase() === q || p.positions.some(x => x.toLowerCase() === q));
+  const gone = E.draftedIds(state);
+  return `<section class="card sticky-search">
+    <input id="search" placeholder="Search name / team / position" value="${esc(search)}" autocomplete="off" />
+    <div class="row-btns">
+      ${['avail', 'all', 'drafted'].map(f => `<button class="btn-xs ${playersFilter === f ? 'on' : ''}" data-filter="${f}">${f === 'avail' ? 'Available' : f === 'all' ? 'All' : 'Drafted'}</button>`).join('')}
+      <span class="muted small">${list.length} shown · sorted by model value</span>
+    </div>
+  </section>
+  <section class="list">${list.slice(0, 150).map(p => `<div class="prow ${gone.has(p.id) ? 'gone' : ''}">
+      <div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span></div>
+      <div class="small muted">${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}${p.risk ? ' · ⚠' : ''} · ${p.value.toFixed(1)}</div></div>
+      ${gone.has(p.id) ? '<span class="muted small">drafted</span>' : `<div class="cand-actions"><button class="btn-primary btn-sm" data-draft-me="${p.id}">ME</button><button class="btn-ghost btn-sm" data-draft-other="${p.id}">Taken</button></div>`}
+    </div>`).join('') || '<p class="muted card">No match. Player not in the pool? Draft the pick as "Unknown" below.</p>'}
+    <div class="card"><button class="btn-ghost" id="unknownOther">Log a pick by another team for a player not in this list</button></div>
+  </section>`;
+}
+
+function strategyView(c) {
+  const slot = state.mySlot;
+  const picks = slot ? E.picksForSlot(slot, state.numTeams) : [];
+  const top = c.all.slice(0, 40);
+  const punts = state.punts;
+  const puntBtn = k => `<button class="btn-xs ${punts.includes(k.key) ? 'on' : ''}" data-punt="${k.key}">${k.label}</button>`;
+  return `<section class="card">
+    <h2>Settings</h2>
+    <label class="row"><span>My draft slot</span><select id="slotSel">${Array.from({ length: state.numTeams }, (_, i) => `<option value="${i + 1}" ${slot === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></label>
+    <div class="small muted">Your picks: ${picks.join(', ')}</div>
+    <label class="row"><span>Weight by games played</span><input type="checkbox" id="gpw" ${state.gpWeight !== false ? 'checked' : ''}/></label>
+    <div class="row"><span>Punt (set weight to 0)</span><div class="chips">${E.CATS.map(puntBtn).join('')}</div></div>
+    <div class="small muted">Punting is a tool, not a default. Only turn one on if your first 3-4 picks naturally point there (e.g. Giannis + Gobert/Kessler → punt FT%).</div>
+    <button class="btn-ghost danger" id="reset">Reset draft (clear all picks)</button>
+  </section>
+  <section class="card">
+    <h2>Draft plan — 10-team 9-cat H2H</h2>
+    <ol class="plan">
+      <li><b>Rounds 1-2: take elite efficiency + stocks.</b> Jokic/Wembanyama/SGA are a tier of their own; after that prefer players who are positive in 6+ cats (Maxey, Cunningham, Tatum, J. Johnson, Mobley, Holmgren, Durant, Curry, Haliburton-if-you-accept-risk). Low-TO guards with FT% (SGA, Maxey, Murray, Curry) and bigs with FG%/BLK (Chet, Mobley, Kessler) travel well in every build.</li>
+      <li><b>Rounds 3-6: lock both C slots early enough.</b> Two dedicated C slots in a 10-teamer dry up fast (Zubac, Sengun, Bam, Duren, Turner, Allen, Kessler, Gobert). Don't leave round 7 without one C.</li>
+      <li><b>Balanced by default.</b> Only punt FT% (Giannis/Gobert/Duren/Kessler/Clingan core) or punt 3PM (Amen, Ausar, Murray-Boyles) if the draft falls that way. Punt-TO/Luka is tempting but costs a real category every week; only with a strong ST/BLK core.</li>
+      <li><b>Rounds 7-10: category specialists.</b> Steals (Dyson Daniels, Ausar, Wallace, Herb Jones, Camara), blocks (Clingan, Turner, Queta, Ware), low-TO 3PM (Pritchard, Nesmith, Keegan Murray).</li>
+      <li><b>Rounds 11-13: upside/availability.</b> Coward, Ty Jerome, Suggs, Day'Ron Sharpe, Maluach, Murray-Boyles, Buzelis-if-left; avoid stashing more than one long-term injury (Butler/Porzingis) — you have 4 IL slots but only 3 BN.</li>
+      <li><b>Avoid at price:</b> Embiid (consensus avoid), LeBron and Jaylen Brown at their Yahoo ADP (usage split in PHI), Morant (crowded POR, availability), Kawhi before round 4, LaMelo before round 4, Poeltl.</li>
+    </ol>
+    <h2>Position-specific notes</h2>
+    <ul class="plan">
+      <li><b>Picks 1-3:</b> Jokic → Wembanyama → SGA. No thinking required.</li>
+      <li><b>Picks 4-6:</b> Luka (accept TO/FG% drag) vs Maxey/Cade/Tatum/Edwards. In 9-cat, Maxey or Tatum is the safer balanced pick; Luka if you'll punt TO.</li>
+      <li><b>Picks 7-10:</b> Whoever is left of Maxey/Cade/Edwards/Tatum/J. Johnson/Flagg, then the Durant/Chet/Mobley/Curry tier comes back to you at 11-14.</li>
+    </ul>
+  </section>
+  <section class="card">
+    <h2>Model board (top 40)</h2>
+    <div class="small muted">Analyst estimates — see sources below. Green = strength, red = weakness.</div>
+    ${top.map(p => `<div class="prow"><div class="pinfo" data-detail="${p.id}"><div><b>${p.modelRank}.</b> ${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}${typeof p.adp === 'number' ? ` · ADP ~${p.adp}` : ''}</span></div><div class="chips">${catChips(p, { punts })}</div></div></div>`).join('')}
+  </section>
+  <section class="card">
+    <h2>Data & sources (checked ${esc(DATA_META.checkedAt)})</h2>
+    <p class="small">${esc(DATA_META.method)}</p>
+    <p class="small flag">${esc(DATA_META.limitation)}</p>
+    <ul class="small src">${SOURCES.map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a> — ${esc(s.status)}</li>`).join('')}</ul>
+    <p class="small">Yahoo integration: <b>not connected</b>. Yahoo's API needs a registered OAuth app and signed agreement; this is manual mode.</p>
+  </section>`;
+}
+
+function detailModal(c) {
+  const p = c.byId[detailId]; if (!p) return '';
+  return `<div class="modal" id="modal"><div class="modal-card">
+    <h2>${esc(p.name)} <span class="muted">${esc(p.team)} · ${p.positions.join('/')}</span></h2>
+    <div class="chips">${catChips(p, { punts: state.punts })}</div>
+    <p class="small">${esc(statLine(p))}</p>
+    <p class="small">Model rank #${p.modelRank} · value ${p.value.toFixed(2)} · ${typeof p.adp === 'number' ? `ADP ~${p.adp}` : 'ADP n/a'}</p>
+    ${p.risk ? `<p class="flag">⚠ ${esc(p.risk)}</p>` : ''}${p.note ? `<p class="small">${esc(p.note)}</p>` : ''}
+    <div class="row-btns">${E.draftedIds(state).has(p.id) ? '' : `<button class="btn-primary" data-draft-me="${p.id}">Draft ME</button><button class="btn-ghost" data-draft-other="${p.id}">Taken</button>`}<button class="btn-ghost" data-remove="${p.id}">Not in pool</button><button class="btn-ghost" id="closeModal">Close</button></div>
+  </div></div>`;
+}
+
+function dialogModal() {
+  const d = dialog;
+  return `<div class="modal"><div class="modal-card">
+    <p>${esc(d.text)}</p>
+    ${d.input ? `<input id="dlgInput" ${d.input === 'number' ? 'type="number" inputmode="numeric"' : ''} value="${esc(d.value ?? '')}" placeholder="${esc(d.placeholder ?? '')}" />` : ''}
+    <div class="row-btns">${d.buttons.map((b, i) => `<button class="${b.primary ? 'btn-primary' : 'btn-ghost'}" data-dlg="${i}">${esc(b.label)}</button>`).join('')}</div>
+  </div></div>`;
+}
+
+function ambiguousModal() {
+  const a = pendingAmbiguous;
+  return `<div class="modal"><div class="modal-card">
+    <h2>Which player?</h2><p>"${esc(a.input)}" matches several players. Tap the right one.</p>
+    ${a.candidates.map(p => `<button class="btn-ghost block" data-pick-amb="${p.id}">${esc(p.name)} <span class="muted">${esc(p.team)} ${p.positions.join('/')}</span></button>`).join('')}
+    <button class="btn-ghost block" id="skipAmb">Skip this name</button>
+  </div></div>`;
+}
+
+// ---------- actions ----------
+function draft(id, forMe) {
+  const c = ctx();
+  const onClock = c.onClock;
+  const commit = (slot) => { try { const next = E.draftPlayer(state, id, slot ? { slot } : {}); detailId = null; dialog = null; setState(next); } catch (e) { notify(e.message); } };
+  if (forMe) {
+    if (!state.mySlot) { notify('Set your draft slot first (Strategy tab).'); return; }
+    if (onClock !== state.mySlot) {
+      ask({ text: `It's slot ${onClock}'s pick (${state.teamNames[onClock - 1]}), not yours. Log this player to YOUR roster anyway? Pick numbers may drift until you log the missing picks.`,
+        buttons: [{ label: 'Log to my roster', primary: true, onClick: () => commit(state.mySlot) }, { label: 'Cancel' }] });
+      return;
+    }
+    commit();
+  } else if (onClock === state.mySlot) {
+    ask({ text: `It's YOUR pick (#${E.currentOverall(state)}). Which slot actually took this player? (1-${state.numTeams})`, input: 'number', value: onClock,
+      buttons: [{ label: 'Mark taken', primary: true, onClick: v => { const n = parseInt(v, 10); commit(Number.isInteger(n) && n >= 1 && n <= state.numTeams ? n : onClock); } }, { label: 'Cancel' }] });
+  } else commit(onClock);
+}
+
+function processTaken(text) {
+  const names = E.parseNameList(text);
+  if (!names.length) return;
+  pendingAmbiguous = null;
+  runTakenQueue(names, 0);
+}
+function runTakenQueue(names, i) {
+  const c = ctx();
+  const failures = [];
+  for (; i < names.length; i++) {
+    const r = E.resolveName(names[i], c.avail);
+    if (r.match) { try { state = E.draftPlayer(state, r.match.id); } catch (e) { failures.push(`${names[i]}: ${e.message}`); } continue; }
+    if (r.ambiguous) { pendingAmbiguous = { input: names[i], candidates: r.ambiguous, names, index: i }; history.push(state); save(); render(); return; }
+    // none: maybe already drafted?
+    const all = E.resolveName(names[i], c.all);
+    failures.push(all.match ? `${names[i]}: already drafted` : `${names[i]}: not found (use Players tab / "Not in pool")`);
+  }
+  history.push(state); save(); render();
+  if (failures.length) notify('Could not process: ' + failures.join(' · '));
+}
+
+function bind(c) {
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { view = b.dataset.view; render(); });
+  document.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => setState({ ...state, mySlot: +b.dataset.slot }, { undoable: false }));
+  document.querySelectorAll('[data-team]').forEach(i => i.onchange = () => { const t = [...state.teamNames]; t[+i.dataset.team] = i.value || `Team ${+i.dataset.team + 1}`; state = { ...state, teamNames: t }; save(); });
+  const sd = $('#startDraft'); if (sd) sd.onclick = () => { view = 'draft'; render(); };
+  document.querySelectorAll('[data-draft-me]').forEach(b => b.onclick = () => draft(b.dataset.draftMe, true));
+  document.querySelectorAll('[data-draft-other]').forEach(b => b.onclick = () => draft(b.dataset.draftOther, false));
+  document.querySelectorAll('[data-detail]').forEach(b => b.onclick = () => { detailId = b.dataset.detail; render(); });
+  document.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { detailId = null; setState({ ...state, removed: [...(state.removed || []), b.dataset.remove] }); });
+  document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { playersFilter = b.dataset.filter; render(); });
+  document.querySelectorAll('[data-punt]').forEach(b => b.onclick = () => { const k = b.dataset.punt; const p = state.punts.includes(k) ? state.punts.filter(x => x !== k) : [...state.punts, k]; setState({ ...state, punts: p }, { undoable: false }); });
+  document.querySelectorAll('[data-pick-amb]').forEach(b => b.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; try { state = E.draftPlayer(state, b.dataset.pickAmb); } catch (e) { notify(e.message); } runTakenQueue(a.names, a.index + 1); });
+  const sk = $('#skipAmb'); if (sk) sk.onclick = () => { const a = pendingAmbiguous; pendingAmbiguous = null; runTakenQueue(a.names, a.index + 1); };
+  const cm = $('#closeModal'); if (cm) cm.onclick = () => { detailId = null; render(); };
+  const md = $('#modal'); if (md) md.onclick = e => { if (e.target === md) { detailId = null; render(); } };
+  const u = $('#undo'); if (u) u.onclick = () => { if (history.length) { state = history.pop(); save(); render(); } else setState(E.undoLastPick(state), { undoable: false }); };
+  const tf = $('#takenForm'); if (tf) tf.onsubmit = e => { e.preventDefault(); const v = $('#takenInput').value; processTaken(v); };
+  const s = $('#search'); if (s) { s.oninput = () => { search = s.value; const pos = s.selectionStart; render(); const n = $('#search'); n.focus(); n.setSelectionRange(pos, pos); }; }
+  const ss = $('#slotSel'); if (ss) ss.onchange = () => setState({ ...state, mySlot: +ss.value }, { undoable: false });
+  const gp = $('#gpw'); if (gp) gp.onchange = () => setState({ ...state, gpWeight: gp.checked }, { undoable: false });
+  const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });
+  const uo = $('#unknownOther'); if (uo) uo.onclick = () => ask({ text: 'Player name (not in the pool) taken by the team on the clock:', input: 'text', placeholder: 'e.g. Jaden Ivey', buttons: [{ label: 'Log pick', primary: true, onClick: name => { if (!name) return; const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); dialog = null; try { setState(E.draftPlayer(state, id)); } catch (e) { notify(e.message); } } }, { label: 'Cancel' }] });
+  document.querySelectorAll('[data-dlg]').forEach(b => b.onclick = () => { const d = dialog; const btn = d.buttons[+b.dataset.dlg]; const v = $('#dlgInput')?.value; dialog = null; if (btn.onClick) btn.onClick(v); if (dialog === null) render(); });
+  const st = $('#startTimer'); if (st) st.onclick = () => { timerEnd = Date.now() + 60000; tick(); };
+}
+function tick() {
+  clearInterval(timerHandle);
+  timerHandle = setInterval(() => {
+    const el = $('#timer'); if (!el || !timerEnd) { clearInterval(timerHandle); return; }
+    const t = Math.max(0, Math.ceil((timerEnd - Date.now()) / 1000));
+    el.textContent = t + 's'; el.classList.toggle('hot', t <= 15);
+    if (t <= 0) { clearInterval(timerHandle); timerEnd = null; render(); }
+  }, 250);
+}
+
+render();
+
+</script>
