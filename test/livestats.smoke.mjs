@@ -20,7 +20,7 @@ await page.click('[data-view="players"]'); await page.fill('#search', 'edwards')
 await page.waitForFunction(() => /live 2 gp: 30.5\/5.5\/4.5/.test(document.querySelector('.list').textContent));
 await page.click('[data-detail="edwards"]');
 txt = await page.textContent('#modal');
-assert.ok(/Blended proj: 28\.7\d? pts/.test(txt), 'blended pts = (28.5*25 + 30.5*2)/27 ≈ 28.65: ' + txt.match(/Blended proj: [^·]+/));
+assert.ok(/Blended proj: 28\.6\d? pts/.test(txt), 'blended pts = (28.5*25 + 30.5*2)/27 ≈ 28.65: ' + txt.match(/Blended proj: [^·]+/));
 assert.ok(/Live 26-27 \(2 gp/.test(txt));
 await page.click('#closeModal');
 // toggle off: preseason numbers return, live line still shown
