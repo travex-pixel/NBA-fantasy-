@@ -1,0 +1,16 @@
+{
+  "name": "cg-worldwide-draft-war-room",
+  "version": "1.0.0",
+  "description": "Mobile-first Yahoo 9-cat fantasy basketball draft assistant (CG Worldwide League, 2026-27)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build": "node scripts/build.js",
+    "serve": "python3 -m http.server 8080"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "playwright-core": "^1.56.1"
+  }
+}
