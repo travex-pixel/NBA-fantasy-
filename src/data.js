@@ -161,7 +161,7 @@ const ROWS = [
 ['porzingis','Kristaps Porzingis','GSW',['PF','C'],18.0,7.0,2.0,0.7,1.6,2.2,.470,13.5,.800,4.0,1.6,40,70,'OUT indefinitely; ESPN est. return 1 Dec','IL stash only'],
 ['horford','Al Horford','GSW',['C'],7.0,5.0,2.0,0.6,0.9,1.4,.440,6.0,.750,0.5,0.7,55,220,'Age 40',null],
 ['lendeborg','Yaxel Lendeborg','GSW',['SF','PF'],9.0,5.5,2.0,0.8,0.7,1.0,.470,7.5,.700,1.5,1.2,65,220,'Rookie','Projected GSW starter'],
-['fvv','Fred VanVleet','HOU',['PG'],13.0,3.5,5.5,1.3,0.4,2.4,.400,11.5,.850,2.0,1.6,55,120,'ACL (Sept 2025); return status not verified',null],
+['fvv','Fred VanVleet','HOU',['PG'],13.0,3.5,5.5,1.3,0.4,2.4,.400,11.5,.850,2.0,1.6,66,94,null,'Cleared and playing for HOU (Yahoo, 20 Oct)'],
 ['jabari','Jabari Smith Jr.','HOU',['PF','C'],13.0,7.5,1.3,0.7,0.8,1.8,.450,11.0,.800,2.0,1.0,70,110,null,null],
 ['eason','Tari Eason','HOU',['SF','PF'],12.0,6.0,1.5,1.5,0.8,1.2,.480,9.5,.700,2.5,1.2,60,130,'Crowded HOU rotation','FantasyGOATs Rd-11 sleeper'],
 ['sheppard','Reed Sheppard','HOU',['PG','SG'],12.0,3.0,4.0,1.3,0.5,2.4,.430,10.0,.850,1.5,1.6,72,125,null,null],
