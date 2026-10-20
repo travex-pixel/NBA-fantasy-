@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0b1220" />
-<title>CG Draft War Room</title>
+<title>Draft War Room</title>
 <meta name="claude:viewport-fit-sides" content="cover" />
 <style>
   :root { color-scheme:dark; --bg:#0b1220; --card:#141d31; --card2:#1b2742; --text:#eef2ff; --muted:#9aa7c7; --accent:#ffb020; --accent-text:#1a1200; --good:#2fbf71; --bad:#ff5d5d; --line:#263454; }
@@ -70,6 +70,15 @@
   .toast.show { opacity:1; transform:translate(-50%, 0); }
   @media (prefers-reduced-motion: reduce) { .toast { transition:none; } }
   button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #8fc1ff; outline-offset:2px; }
+  .file-btn { display:flex; align-items:center; justify-content:center; text-align:center; }
+  .qp { border-color:#3b4f80; }
+  .reading { padding:10px; color:var(--accent); font-weight:700; display:flex; justify-content:space-between; align-items:center; }
+  .qp-out { background:#0e1627; border-radius:12px; padding:10px; margin-top:10px; display:grid; gap:8px; }
+  .qp-row { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; }
+  .qp-label { font-size:11px; letter-spacing:.06em; color:var(--accent); font-weight:800; min-width:74px; }
+  .qp-name { font-size:17px; font-weight:800; min-width:0; }
+  .qp-row:first-child .qp-name { font-size:21px; }
+  .qp-prop { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); } .qp-prop input { width:24px; height:24px; min-height:0; }
   details summary { cursor:pointer; color:var(--muted); padding:6px 0; }
   @media (min-width:520px) { .modal { align-items:center; } .modal-card { max-width:520px; border-radius:16px; } }
 </style>
@@ -94,7 +103,7 @@ const CATS = [
 ];
 
 const LEAGUE = {
-  name: 'CG Worldwide League',
+  name: 'Worldwide League',
   yahooLeagueId: 60156,
   season: '2026-27',
   teams: 10,
@@ -447,7 +456,7 @@ function undoLastPick(state) {
   return { ...state, picks: state.picks.slice(0, -1) };
 }
 
-// Player pool for the 2026-27 season — CG Worldwide League draft assistant.
+// Player pool for the 2026-27 season — Worldwide League draft assistant.
 //
 // HOW TO READ THIS FILE (honesty notes):
 // * Stats are the ANALYST'S 2026-27 PER-GAME ESTIMATES. They start from each player's 2025-26
@@ -691,7 +700,7 @@ const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, p
 
 
 
-const STORAGE_KEY = 'cgw-draft-v1';
+const STORAGE_KEY = 'draft-war-room-v1';
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -703,6 +712,18 @@ let timerEnd = null; let timerHandle = null;
 let pendingAmbiguous = null; // { names: [], index, candidates }
 let playersFilter = 'avail';
 let detailId = null;
+// --- Screenshot quick pick (uses the artifact runtime's `sample` capability; absent elsewhere) ---
+let shot = { status: 'idle' }; // idle | reading | ready | error ; ready: { parsed, proposals, conflicts, unmatched, ambiguous, rec, pickNote }
+let vision = { checked: false, sample: null, images: false };
+async function detectVision() {
+  try {
+    if (!window.claude || typeof window.claude.use !== 'function') { vision = { checked: true, sample: null, images: false }; return; }
+    const sample = await window.claude.use('sample');
+    const limits = sample ? await sample.limits().catch(() => null) : null;
+    vision = { checked: true, sample, images: !!(limits && limits.images), accept: limits?.images?.mediaTypes?.join(',') || 'image/*' };
+  } catch { vision = { checked: true, sample: null, images: false }; }
+  render();
+}
 let dialog = null; // in-page replacement for the browser dialogs the artifact viewer blocks: { text, input?, value?, buttons: [{label, primary, onClick(value)}] }
 function ask(d) { dialog = d; render(); }
 function notify(msg) {
@@ -770,7 +791,7 @@ function nav() {
 function setupView() {
   const slots = Array.from({ length: state.numTeams }, (_, i) => i + 1);
   return `<section class="card">
-    <h1>CG Worldwide League — Draft War Room</h1>
+    <h1>Draft War Room — Worldwide League</h1>
     <p class="muted">Yahoo league 60156 · 2026-27 · 10 teams · H2H 9-cat · snake · 1-min clock</p>
     <h2>1. League settings (locked to your brief)</h2>
     <ul class="compact">
@@ -840,6 +861,7 @@ function draftView(c) {
   const rec = c.rec;
   const until = c.myNext && c.myNext > c.overall ? c.myNext - c.overall : 0;
   return `
+    ${quickPickCard(c)}
     <section class="card quick">
       <form id="takenForm" class="taken-form">
         <input id="takenInput" placeholder="TAKEN: name, name, name  (or one name)" autocomplete="off" />
@@ -860,6 +882,150 @@ function draftView(c) {
     </section>
     <section class="card">${rosterPanel(c)}</section>
     <section class="card"><details><summary>Draft ledger (${state.picks.length})</summary>${ledger(c)}</details></section>`;
+}
+
+function quickPickCard(c) {
+  const canRead = vision.checked && vision.sample && vision.images;
+  let body = '';
+  if (!vision.checked) body = '<div class="small muted">Checking whether screenshot reading is available in this view…</div>';
+  else if (!canRead) body = `<div class="small flag">Screenshot reading is not available in this copy of the app${vision.sample ? ' (images not permitted here)' : ''}. Fallback: send the screenshot to Claude in the chat and paste the names into the TAKEN box below, or tap Taken in the Players tab.</div>`;
+  else body = `<label class="btn-primary big file-btn" for="shotInput">📷 QUICK PICK FROM SCREENSHOT</label>
+    <input type="file" id="shotInput" accept="${esc(vision.accept)}" hidden />
+    <div class="small muted">Yahoo draft room screenshot (Players list, Draft Results or My Team). Claude reads it; nothing is logged until you confirm.</div>`;
+  if (shot.status === 'reading') body += `<div class="reading">Reading screenshot… <button class="btn-xs" id="shotCancel">Stop</button></div>`;
+  if (shot.status === 'error') body += `<div class="flag">${esc(shot.msg)}</div>`;
+  if (shot.status === 'ready') body += quickPickResult(c);
+  return `<section class="card qp">${body}</section>`;
+}
+
+function quickPickResult(c) {
+  const r = shot;
+  const line = (label, cnd, seen) => cnd ? `<div class="qp-row"><span class="qp-label">${label}</span><span class="qp-name">${esc(cnd.player.name)} <span class="muted small">${esc(cnd.player.team)} ${cnd.player.positions.join('/')}${seen[cnd.player.id] === 'available' ? ' · seen available' : seen[cnd.player.id] ? '' : ' · not visible in shot, verify'}</span></span><button class="btn-primary btn-sm" data-qp-draft="${cnd.player.id}">I drafted</button></div>` : '';
+  const seen = r.seen || {};
+  const best = r.rec.best;
+  const risk = best ? best.flags.filter(f => !/^Only a flex|^No open slot/.test(f)) : [];
+  const n = r.proposals.filter(p => p.on).length;
+  return `
+    <div class="qp-out">
+      ${line('BEST PICK NOW', best, seen)}
+      ${line('BACKUP 1', r.rec.backups[0], seen)}
+      ${line('BACKUP 2', r.rec.backups[1], seen)}
+      ${best ? `<div class="small"><b>WHY:</b> ${esc(whySentence(best, c))}</div>` : '<div class="flag">No available player found.</div>'}
+      ${risk.length ? `<div class="small flag"><b>RISK:</b> ${esc(risk.join('; '))}</div>` : ''}
+      ${r.pickNote ? `<div class="small flag">${esc(r.pickNote)}</div>` : ''}
+      ${r.parsed.partial ? '<div class="small muted">Screenshot shows only part of the pool; recommendation uses the full remaining pool.</div>' : ''}
+      ${r.parsed.uncertain?.length ? `<div class="small muted">Uncertain in image: ${esc(r.parsed.uncertain.join('; '))}</div>` : ''}
+    </div>
+    ${r.proposals.length ? `<div class="label">UPDATES FROM SCREENSHOT — confirm before they apply</div>
+      ${r.proposals.map((p, i) => `<label class="qp-prop"><input type="checkbox" data-prop="${i}" ${p.on ? 'checked' : ''}/> <span>${p.type === 'mine' ? 'My roster: ' : 'Taken: '}${esc(p.player.name)}${p.pick ? ` (#${p.pick})` : ''}</span></label>`).join('')}
+      <button class="btn-ghost" id="qpApply">Apply ${n} update${n === 1 ? '' : 's'} (no draft)</button>` : '<div class="small muted">No new picks found in the screenshot.</div>'}
+    ${r.conflicts.length ? `<div class="flag small">Conflicts: ${r.conflicts.map(esc).join(' · ')}</div>` : ''}
+    ${r.dupes ? `<div class="small muted">${r.dupes} already logged, skipped.</div>` : ''}
+    ${r.ambiguous.length ? `<div class="flag small">Ambiguous names — tap the right player to add as Taken: ${r.ambiguous.map(a => `<div>${esc(a.input)}: ${a.candidates.map(p => `<button class="btn-xs" data-amb-add="${p.id}">${esc(p.name)}</button>`).join(' ')}</div>`).join('')}</div>` : ''}
+    ${r.unmatched.length ? `<div class="small muted">Not in pool: ${r.unmatched.map(esc).join(', ')} (log via Players tab if needed)</div>` : ''}
+    <div class="row-btns"><button class="btn-xs" id="qpReread">Re-read carefully (slower)</button><button class="btn-xs" id="qpClear">Dismiss</button></div>`;
+}
+
+function whySentence(cnd, c) {
+  const s = cnd.strengths.length ? `${cnd.strengths.slice(0, 3).join('/')} ` : 'balanced 9-cat value ';
+  const fit = c.rec.open.length ? fitText(cnd, c).split(' (')[0] : 'roster full';
+  const need = cnd.reasons.find(r => r.startsWith('Shores up'));
+  return `${s}from a ${cnd.player.positions.join('/')} that ${fit}${need ? '; ' + need.toLowerCase() : ''}.`;
+}
+
+const SHOT_PROMPT = (poolNames) => `You are reading a screenshot of a Yahoo Fantasy Basketball LIVE DRAFT room (2026-27 season) taken on an Android phone. Extract only what is legibly visible. Never invent names, picks or statuses.
+Reply with ONLY one JSON object:
+{"screen":"available_players|draft_results|my_team|mixed|unclear","round":null,"pick":null,"players":[{"name":"First Last","status":"available|drafted|mine|unknown","pick":null,"team":null}],"partial":true,"uncertain":[],"notes":""}
+Rules:
+- "status": "drafted" only for players shown as taken (a Draft Results / picks list, a drafted/strikethrough mark, or a team roster); "mine" only for players under MY team's roster; "available" only for rows in the available Players list with no drafted mark; otherwise "unknown".
+- "pick": the overall pick number if shown next to a drafted player, else null. "team": the drafting team name if shown.
+- "round"/"pick" at the top level: the current round and overall pick shown in the header, if visible, else null.
+- "partial": true if the list is scrolled or cut off so other players certainly exist that are not visible.
+- "uncertain": short notes for any name you could not read confidently (put that name's status as "unknown").
+- Use the exact spelling from this known pool when the screenshot clearly matches one of them: ${poolNames}`;
+
+async function readScreenshot(file, { careful = false } = {}) {
+  if (!file) return;
+  const sample = vision.sample;
+  if (!sample) { shot = { status: 'error', msg: 'Screenshot reading is not available in this view.' }; render(); return; }
+  const ctl = new AbortController(); shot = { status: 'reading', ctl, file }; render();
+  const c = ctx();
+  try {
+    const parsed = await sample.json(SHOT_PROMPT(c.all.map(p => p.name).join(', ')), { images: [file], modelTier: careful ? 'default' : 'quick', cache: false, signal: ctl.signal });
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.players)) throw { code: 'invalid_json', message: 'no players array' };
+    shot = analyseShot(parsed, c);
+  } catch (e) {
+    if (e && e.code === 'cancelled') { shot = { status: 'idle' }; render(); return; }
+    const copy = { not_granted: 'You declined Claude access for this page, so screenshots cannot be read. Use the TAKEN box instead.', images_unavailable: 'This view cannot send images to Claude. Use the TAKEN box instead.', image_rejected: 'That image was rejected (type/size). Try a plain PNG/JPEG screenshot.', rate_limited: 'Claude is rate-limited right now. Wait a moment or use the TAKEN box.', invalid_json: 'Claude could not produce a readable list from that image. Try a clearer or tighter screenshot, or paste names.', refused: 'Claude declined to read that image.', session_expired: 'Your Claude session expired. Sign in again.' };
+    shot = { status: 'error', msg: copy[e?.code] || `Could not read the screenshot (${e?.code || e?.message || 'unknown error'}). Use the TAKEN box instead.` };
+  }
+  render();
+}
+
+/** Pure-ish: turn parsed screenshot JSON into proposals/conflicts and a tentative recommendation. Exported for tests via window. */
+function analyseShot(parsed, c) {
+  const drafted = E.draftedIds(state);
+  const mineIds = new Set(c.roster.map(p => p.id));
+  const proposals = [], conflicts = [], unmatched = [], ambiguous = [], seen = {}; let dupes = 0;
+  const seenIds = new Set();
+  for (const row of parsed.players || []) {
+    const name = String(row?.name || '').trim(); if (!name) continue;
+    const status = ['available', 'drafted', 'mine', 'unknown'].includes(row.status) ? row.status : 'unknown';
+    const r = E.resolveName(name, c.all);
+    if (r.ambiguous) { if (status !== 'available') ambiguous.push({ input: name, candidates: r.ambiguous }); continue; }
+    if (!r.match) { if (status !== 'available') unmatched.push(name); continue; }
+    const p = r.match; if (seenIds.has(p.id)) continue; seenIds.add(p.id);
+    seen[p.id] = status;
+    const pick = Number.isInteger(row.pick) ? row.pick : null;
+    if (status === 'drafted') {
+      if (mineIds.has(p.id)) continue;
+      if (drafted.has(p.id)) { dupes++; continue; }
+      proposals.push({ type: 'taken', player: p, pick, on: true });
+    } else if (status === 'mine') {
+      if (mineIds.has(p.id)) { dupes++; continue; }
+      if (drafted.has(p.id)) { conflicts.push(`${p.name} is on your team in the screenshot but logged as taken by another team (#${state.picks.find(x => x.playerId === p.id)?.overall})`); continue; }
+      proposals.push({ type: 'mine', player: p, pick, on: true });
+    } else if (status === 'available' && drafted.has(p.id)) {
+      conflicts.push(`${p.name} looks available in the screenshot but is logged as drafted (#${state.picks.find(x => x.playerId === p.id)?.overall}) — undo if wrong`);
+    }
+  }
+  proposals.sort((a, b) => (a.pick ?? 1e9) - (b.pick ?? 1e9));
+  const rec = tentativeRec(proposals, c);
+  // pick-number sanity
+  let pickNote = null;
+  const shotPick = Number.isInteger(parsed.pick) ? (Number.isInteger(parsed.round) && parsed.pick <= state.numTeams ? (parsed.round - 1) * state.numTeams + parsed.pick : parsed.pick) : null;
+  if (shotPick) {
+    const after = c.overall + proposals.length;
+    if (shotPick !== after) pickNote = `Screenshot header says pick #${shotPick}; the app will be at #${after} after these updates. ${shotPick > after ? `${shotPick - after} pick(s) are missing — log them with TAKEN.` : 'Check for a duplicate entry (Undo).'}`;
+  }
+  return { status: 'ready', parsed, proposals, conflicts, unmatched, ambiguous, dupes, seen, rec, pickNote };
+}
+
+function tentativeRec(proposals, c) {
+  const on = proposals.filter(p => p.on);
+  const gone = new Set(on.map(p => p.player.id));
+  const roster = [...c.roster, ...on.filter(p => p.type === 'mine').map(p => p.player)];
+  const avail = c.avail.filter(p => !gone.has(p.id));
+  const overall = c.overall + on.length;
+  const myNext = state.mySlot ? E.nextPickForSlot(state.mySlot, state.numTeams, overall) : overall;
+  const myFollowing = state.mySlot ? E.followingPickForSlot(state.mySlot, state.numTeams, myNext ?? overall) : overall + state.numTeams;
+  return E.recommend(avail, roster, { punts: state.punts, currentPick: myNext ?? overall, nextPick: myFollowing ?? overall + state.numTeams });
+}
+
+function applyShot({ draftId = null } = {}) {
+  if (shot.status !== 'ready') return;
+  history.push(state);
+  let next = state; const errs = [];
+  for (const p of shot.proposals.filter(p => p.on)) {
+    try { next = E.draftPlayer(next, p.player.id, p.type === 'mine' ? { slot: state.mySlot } : {}); } catch (e) { errs.push(`${p.player.name}: ${e.message}`); }
+  }
+  if (draftId) {
+    try { next = E.draftPlayer(next, draftId, { slot: state.mySlot }); } catch (e) { errs.push(e.message); }
+  }
+  state = next; save();
+  shot = { status: 'idle' };
+  render();
+  if (errs.length) notify('Skipped: ' + errs.join(' · ')); else notify(draftId ? 'Pick logged. Undo if wrong.' : 'Updates applied. Undo if wrong.');
 }
 
 function rosterPanel(c) {
@@ -1036,6 +1202,14 @@ function bind(c) {
   const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });
   const uo = $('#unknownOther'); if (uo) uo.onclick = () => ask({ text: 'Player name (not in the pool) taken by the team on the clock:', input: 'text', placeholder: 'e.g. Jaden Ivey', buttons: [{ label: 'Log pick', primary: true, onClick: name => { if (!name) return; const id = 'unk-' + Date.now(); PLAYERS.push({ id, name: name + ' (unlisted)', team: '?', positions: ['Util'], gp: 60 }); dialog = null; try { setState(E.draftPlayer(state, id)); } catch (e) { notify(e.message); } } }, { label: 'Cancel' }] });
   document.querySelectorAll('[data-dlg]').forEach(b => b.onclick = () => { const d = dialog; const btn = d.buttons[+b.dataset.dlg]; const v = $('#dlgInput')?.value; dialog = null; if (btn.onClick) btn.onClick(v); if (dialog === null) render(); });
+  const si = $('#shotInput'); if (si) si.onchange = () => { const f = si.files && si.files[0]; if (f) readScreenshot(f); };
+  const sc = $('#shotCancel'); if (sc) sc.onclick = () => shot.ctl?.abort();
+  const rr = $('#qpReread'); if (rr) rr.onclick = () => readScreenshot(shot.file, { careful: true });
+  const qc = $('#qpClear'); if (qc) qc.onclick = () => { shot = { status: 'idle' }; render(); };
+  const qa = $('#qpApply'); if (qa) qa.onclick = () => applyShot();
+  document.querySelectorAll('[data-qp-draft]').forEach(b => b.onclick = () => { if (!state.mySlot) { notify('Set your draft slot first.'); return; } applyShot({ draftId: b.dataset.qpDraft }); });
+  document.querySelectorAll('[data-prop]').forEach(cb => cb.onchange = () => { shot.proposals[+cb.dataset.prop].on = cb.checked; shot.rec = tentativeRec(shot.proposals, ctx()); render(); });
+  document.querySelectorAll('[data-amb-add]').forEach(b => b.onclick = () => { const id = b.dataset.ambAdd; const c2 = ctx(); const p = c2.byId[id]; if (!p) return; shot.ambiguous = shot.ambiguous.filter(a => !a.candidates.some(x => x.id === id)); if (!E.draftedIds(state).has(id) && !shot.proposals.some(x => x.player.id === id)) shot.proposals.push({ type: 'taken', player: p, pick: null, on: true }); shot.rec = tentativeRec(shot.proposals, c2); render(); });
   const st = $('#startTimer'); if (st) st.onclick = () => { timerEnd = Date.now() + 60000; tick(); };
 }
 function tick() {
@@ -1049,6 +1223,8 @@ function tick() {
 }
 
 render();
+detectVision();
+window.__war = { analyseShot: (parsed) => analyseShot(parsed, ctx()), getState: () => state, setShot: (v) => { shot = v; render(); } };
 
 </script>
 </body>

@@ -1,7 +1,7 @@
 {
-  "name": "cg-worldwide-draft-war-room",
+  "name": "draft-war-room",
   "version": "1.0.0",
-  "description": "Mobile-first Yahoo 9-cat fantasy basketball draft assistant (CG Worldwide League, 2026-27)",
+  "description": "Mobile-first Yahoo 9-cat fantasy basketball draft assistant (Worldwide League, 2026-27)",
   "type": "module",
   "private": true,
   "scripts": {

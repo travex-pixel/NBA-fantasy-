@@ -14,7 +14,7 @@ export const CATS = [
 ];
 
 export const LEAGUE = {
-  name: 'CG Worldwide League',
+  name: 'Worldwide League',
   yahooLeagueId: 60156,
   season: '2026-27',
   teams: 10,

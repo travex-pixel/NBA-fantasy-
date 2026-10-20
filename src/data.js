@@ -1,4 +1,4 @@
-// Player pool for the 2026-27 season — CG Worldwide League draft assistant.
+// Player pool for the 2026-27 season — Worldwide League draft assistant.
 //
 // HOW TO READ THIS FILE (honesty notes):
 // * Stats are the ANALYST'S 2026-27 PER-GAME ESTIMATES. They start from each player's 2025-26

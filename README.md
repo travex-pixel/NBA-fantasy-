@@ -1,4 +1,4 @@
-# CG Worldwide League — Draft War Room (2026-27, Yahoo 9-cat)
+# Draft War Room — Worldwide League (2026-27, Yahoo 9-cat)
 
 Mobile-first draft assistant for a 10-team, head-to-head 9-category Yahoo snake draft with a 1-minute clock.
 No backend, no accounts, no paid APIs. State is saved in your browser (localStorage).
@@ -59,3 +59,21 @@ node test/ui.smoke.mjs   # browser smoke test (needs Chromium + playwright-core)
 All ranking/news sites in the brief were blocked by the session's network policy on 20 Oct 2026; only
 web-search summaries were readable. Player stats are analyst estimates from the 2025-26 baseline plus confirmed
 offseason moves, ADP is quoted only where a snippet gave a number. See *Strategy → Data & sources*.
+
+## Quick Pick from screenshot
+
+In the Claude-hosted version, the Draft Now tab has **QUICK PICK FROM SCREENSHOT**. Pick a Yahoo draft-room
+screenshot (Players list, Draft Results or My Team). The page sends the image to Claude through the artifact
+runtime's `sample` capability (your Claude account; a one-time consent prompt) and asks for a strict JSON list of
+legible names and their status. The app then:
+
+* proposes ledger updates (Taken / My roster) that only apply after you confirm;
+* shows BEST PICK NOW, BACKUP 1, BACKUP 2, a one-sentence WHY and a RISK line computed by the existing engine with
+  the proposed updates applied tentatively;
+* flags ambiguous names (you tap the right player), unreadable names, conflicts with the ledger, duplicate uploads,
+  and a mismatch between the screenshot's pick number and the app's;
+* never treats a partial list as the whole pool, and never recommends a player logged as drafted;
+* logs your pick with one tap ("I drafted"); Undo reverts the whole batch.
+
+The local/GitHub copy cannot send images to Claude, so it shows that limitation instead of an upload button.
+Fallback: send the screenshot in the Claude Code chat and paste the names into the TAKEN box.
