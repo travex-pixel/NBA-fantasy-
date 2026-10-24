@@ -413,3 +413,140 @@ export function applyLiveStats(players, liveMap, opts = {}) {
   });
   return { players: out, matched, unmatched: players.length - matched };
 }
+
+// ---------- Season calendar, schedule and weekly projection ----------
+/** ESPN team codes -> the codes used in data.js / Yahoo. */
+export const ESPN_TEAM_MAP = { GS: 'GSW', SA: 'SAS', NY: 'NYK', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS' };
+export function normTeam(t) { return ESPN_TEAM_MAP[t] || t; }
+
+/** Game dates are stored as US-Eastern calendar dates (YYYY-MM-DD), which is how Yahoo scores a "day". */
+export function etDateOf(isoUtc) {
+  const d = new Date(isoUtc);
+  const y = d.getUTCFullYear();
+  // US DST: second Sunday of March 2am -> first Sunday of November 2am (approximate with UTC dates)
+  const nthSunday = (year, month, n) => { const first = new Date(Date.UTC(year, month, 1)); const day = first.getUTCDay(); return 1 + ((7 - day) % 7) + 7 * (n - 1); };
+  const dstStart = Date.UTC(y, 2, nthSunday(y, 2, 2), 7); // 2am EST = 07:00 UTC
+  const dstEnd = Date.UTC(y, 10, nthSunday(y, 10, 1), 6); // 2am EDT = 06:00 UTC
+  const offsetH = d.getTime() >= dstStart && d.getTime() < dstEnd ? 4 : 5;
+  const local = new Date(d.getTime() - offsetH * 3600000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** Yahoo fantasy weeks for 2026-27. Week 1 is the short opening week; week 2 onward run Monday to Sunday.
+ *  Note: Yahoo sometimes merges the All-Star week into a two-week period; this calendar does not, so
+ *  numbering after mid-February is approximate until confirmed against the league page. */
+export const SEASON = { week1Start: '2026-10-20', week2Start: '2026-10-26', playoffWeeks: [20, 21, 22], scoringStartsWeek: 2 };
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+export function weekRange(week) {
+  if (week <= 1) return { week: 1, start: SEASON.week1Start, end: addDays(SEASON.week2Start, -1) };
+  const start = addDays(SEASON.week2Start, (week - 2) * 7);
+  return { week, start, end: addDays(start, 6) };
+}
+export function weekOf(dateStr) {
+  if (dateStr < SEASON.week2Start) return weekRange(1);
+  const days = Math.round((Date.parse(dateStr + 'T00:00:00Z') - Date.parse(SEASON.week2Start + 'T00:00:00Z')) / 86400000);
+  return weekRange(2 + Math.floor(days / 7));
+}
+
+/** schedule = { teams: { CODE: [[dateET, oppCode, home(1|0)], ...] } } */
+export function gamesFor(schedule, team, start, end) {
+  const list = schedule?.teams?.[normTeam(team)] || [];
+  return list.filter(g => g[0] >= start && g[0] <= end).map(g => ({ date: g[0], opp: g[1], home: !!g[2] }));
+}
+export function playoffGames(schedule, team) {
+  return SEASON.playoffWeeks.reduce((s, w) => { const r = weekRange(w); return s + gamesFor(schedule, team, r.start, r.end).length; }, 0);
+}
+
+function injuryOut(p, end) {
+  const st = String(p.injury?.status || '').toLowerCase();
+  if (!st) return false;
+  if (/out|doubt/.test(st) && !/day/.test(st)) { const rd = p.injury?.returnDate; return !rd || rd > end; }
+  return false;
+}
+
+/** Project a roster's category totals over a date range from per-game rates and the schedule.
+ *  Players with status Out (and no return inside the range) count zero games. Returns per-player games,
+ *  totals (counting stats, makes/attempts and the derived percentages) and a per-category variance. */
+export function projectWeek(players, schedule, { start, end, fromDate = null } = {}) {
+  const totals = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0, fgm: 0, fga: 0, ftm: 0, fta: 0 };
+  const variance = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0 };
+  const perPlayer = [];
+  for (const p of players) {
+    const all = gamesFor(schedule, p.team, start, end);
+    const remaining = fromDate ? all.filter(g => g.date >= fromDate) : all;
+    const out = injuryOut(p, end);
+    const games = out ? 0 : remaining.length;
+    perPlayer.push({ player: p, games, dates: remaining.map(g => g.date), out, gtd: /day|questionable|game time/i.test(p.injury?.status || '') });
+    if (!games) continue;
+    for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) { const r = p[k] || 0; totals[k] += r * games; variance[k] += games * Math.pow(0.45 * r + 0.3, 2); }
+    totals.fgm += (p.fgp || 0) * (p.fga || 0) * games; totals.fga += (p.fga || 0) * games;
+    totals.ftm += (p.ftp || 0) * (p.fta || 0) * games; totals.fta += (p.fta || 0) * games;
+  }
+  totals.fgp = totals.fga ? totals.fgm / totals.fga : 0; totals.ftp = totals.fta ? totals.ftm / totals.fta : 0;
+  variance.fgp = totals.fga ? (totals.fgp * (1 - totals.fgp)) / totals.fga : 0;
+  variance.ftp = totals.fta ? (totals.ftp * (1 - totals.ftp)) / totals.fta : 0;
+  return { perPlayer, totals, variance, games: perPlayer.reduce((s, x) => s + x.games, 0) };
+}
+
+function normCdf(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const d = 0.3989423 * Math.exp(-x * x / 2); let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x >= 0 ? 1 - p : p; }
+
+/** Compare two weekly projections category by category. label: locked (>=80%), lean (65-80), swing (35-65), behind (20-35), lost (<20). */
+export function compareWeek(mine, theirs) {
+  return CATS.map(c => {
+    const a = mine.totals[c.key], b = theirs.totals[c.key];
+    const sd = Math.sqrt((mine.variance[c.key] || 0) + (theirs.variance[c.key] || 0)) || 1e-6;
+    let z = (a - b) / sd; if (!c.higherIsBetter) z = -z;
+    const p = normCdf(z);
+    const label = p >= 0.8 ? 'locked' : p >= 0.65 ? 'lean' : p > 0.35 ? 'swing' : p > 0.2 ? 'behind' : 'lost';
+    return { key: c.key, label: c.label, mine: a, theirs: b, pWin: p, state: label };
+  });
+}
+
+/** Which categories to chase this week: swing and behind categories carry full weight, lean half, locked and lost none. */
+export function needWeights(cmp) {
+  const w = {}; for (const r of cmp) w[r.key] = r.state === 'swing' || r.state === 'behind' ? 1 : r.state === 'lean' ? 0.5 : 0; return w;
+}
+
+/** Rank free agents for streaming: category value in the needed categories times games left in the range. */
+export function streamCandidates(freeAgents, schedule, { start, end, fromDate = null }, weights) {
+  return freeAgents.map(p => {
+    const all = gamesFor(schedule, p.team, start, end); const left = (fromDate ? all.filter(g => g.date >= fromDate) : all);
+    const games = injuryOut(p, end) ? 0 : left.length;
+    const fit = CATS.reduce((s, c) => s + (weights[c.key] || 0) * (p.z?.[c.key] || 0), 0);
+    return { player: p, games, dates: left.map(g => g.date), fit, score: games * (fit + 0.5) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+/** Players with a game on a given ET date, with injury flags. */
+export function playingOn(players, schedule, dateET) {
+  return players.map(p => ({ player: p, plays: gamesFor(schedule, p.team, dateET, dateET).length > 0, out: injuryOut(p, dateET), gtd: /day|questionable|game time/i.test(p.injury?.status || '') }));
+}
+
+// ---------- Recent form from game logs ----------
+/** gamelog rows: [dateET, min, pts, reb, ast, stl, blk, tpm, fgm, fga, ftm, fta, tov] newest first. */
+export function recentAverages(rows, n = 10) {
+  const g = (rows || []).filter(r => r && r[1] > 0).slice(0, n);
+  if (!g.length) return null;
+  const sum = i => g.reduce((s, r) => s + (r[i] || 0), 0);
+  const L = g.length;
+  const fga = sum(9) / L, fta = sum(11) / L;
+  return { gp: L, min: sum(1) / L, pts: sum(2) / L, reb: sum(3) / L, ast: sum(4) / L, stl: sum(5) / L, blk: sum(6) / L, tpm: sum(7) / L, fga, fta, fgp: fga ? sum(8) / sum(9) : null, ftp: fta ? sum(10) / sum(11) : null, tov: sum(12) / L };
+}
+/** Blend the last-n form into each player's current line with weight n/(n+k). Idempotent (uses .preseason/.live baseline when present). */
+export function applyRecentForm(players, gamelogs, { n = 10, k = 10, use = true } = {}) {
+  const idx = new Map(); for (const [name, rows] of Object.entries(gamelogs || {})) idx.set(normaliseName(name), rows);
+  let matched = 0;
+  const out = players.map(p => {
+    const rows = idx.get(normaliseName(p.name)); const form = rows ? recentAverages(rows, n) : null;
+    if (!form) return { ...p, form: null };
+    matched++;
+    if (!use) return { ...p, form };
+    const base = p.formBase || { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tpm: p.tpm, fgp: p.fgp, fga: p.fga, ftp: p.ftp, fta: p.fta, tov: p.tov };
+    const w = form.gp / (form.gp + k), v = 1 - w; const b = {};
+    for (const key of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov', 'fga', 'fta']) b[key] = +(base[key] * v + form[key] * w).toFixed(2);
+    b.fgp = form.fgp == null ? base.fgp : +(((base.fgp * base.fga * v) + (form.fgp * form.fga * w)) / (b.fga || 1)).toFixed(3);
+    b.ftp = form.ftp == null ? base.ftp : +(((base.ftp * base.fta * v) + (form.ftp * form.fta * w)) / (b.fta || 1)).toFixed(3);
+    return { ...p, ...b, form, formBase: base };
+  });
+  return { players: out, matched };
+}

@@ -1,0 +1,42 @@
+// Week tab against the REAL fetched schedule/gamelogs/stats (data/*.json), served through a mocked artifact db.
+import { chromium } from 'playwright-core';
+import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const docs = { 'stats/latest': JSON.parse(readFileSync('data/live-stats.json', 'utf8')), 'stats/schedule': JSON.parse(readFileSync('data/schedule.json', 'utf8')), 'stats/gamelogs': JSON.parse(readFileSync('data/gamelogs.json', 'utf8')) };
+const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const errors = []; page.on('pageerror', e => errors.push(String(e))); page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+await page.addInitScript((d) => { const db = { doc: (path) => ({ get: async () => ({ exists: !!d[path], data: () => d[path] }) }) }; window.claude = { use: async (n) => (n === 'db' ? db : null) }; }, docs);
+await page.goto('file://' + resolve('dist/index.html'));
+await page.click('[data-slot="5"]'); await page.click('#startDraft');
+await page.click('[data-view="week"]');
+await page.waitForFunction(() => /Schedule fetched/.test(document.querySelector('.main').textContent));
+await page.fill('#rosterInput', 'Tyrese Maxey, Fred VanVleet, Derrick White, Dyson Daniels, Cason Wallace, Coby White, Payton Pritchard, Josh Hart, Cameron Johnson, Chet Holmgren, Anthony Davis, Ivica Zubac, Jarrett Allen');
+await page.click('#rosterForm button');
+await page.waitForFunction(() => /MY YAHOO ROSTER \(13\)/.test(document.querySelector('.main').textContent));
+let txt = await page.textContent('.main');
+assert.ok(/Games (left )?this week: \d+/.test(txt), 'games this week shown');
+await page.fill('#oppInput', 'Jamal Murray, Kon Knueppel, Stephen Curry, Jaden McDaniels, Paolo Banchero, Paul George, Neemias Queta, Khaman Maluach, Ryan Rollins, Victor Wembanyama, Joel Embiid, Wendell Carter Jr.');
+await page.click('#oppForm button');
+await page.waitForSelector('table.race');
+txt = await page.textContent('.main');
+assert.ok(/CATEGORY RACE/.test(txt) && (txt.match(/locked|lean|swing|behind|lost/g) || []).length >= 9, 'nine category rows with states');
+assert.ok(/Expected categories: \d\.\d of 9/.test(txt));
+assert.ok(/TONIGHT \(\d{4}-\d{2}-\d{2}\)/.test(txt) && /Playing:/.test(txt));
+await page.fill('#faInput', 'Ty Jerome, Collin Gillespie, Christian Braun, Herb Jones');
+await page.click('#faForm button');
+await page.waitForFunction(() => /STREAMING/.test(document.querySelector('.main').textContent) && document.querySelectorAll('.prow').length >= 3);
+txt = await page.textContent('.main');
+assert.ok(/games? left/.test(txt), 'streaming shows games left');
+assert.ok(/PLAYOFF GAMES/.test(txt) && /Maxey \d/.test(txt), 'playoff game counts');
+await page.click('#wkNext'); await page.waitForFunction(() => /Week \d+/.test(document.querySelector('.main').textContent));
+// persistence of rosters across reload
+await page.reload(); await page.waitForSelector('.hdr'); await page.click('[data-view="week"]');
+await page.waitForFunction(() => /OPPONENT THIS WEEK \(12\)/.test(document.querySelector('.main').textContent));
+// recent form reflected in a player detail (Ty Jerome had a 45-point opener in the real log)
+await page.click('[data-view="players"]'); await page.fill('#search', 'jerome'); await page.click('[data-detail="jerome"]');
+txt = await page.textContent('#modal'); assert.ok(/Live 26-27/.test(txt), 'live line shown for Jerome');
+await browser.close();
+assert.deepEqual(errors, [], errors.join(' | '));
+console.log('Week tab smoke test passed');

@@ -9,7 +9,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 let state = load() || E.createState();
 let history = []; // undo stack of previous states
-let view = state.mySlot ? 'draft' : 'setup';
+let view = state.mySlot ? (state.myTeamIds?.length ? 'week' : 'draft') : 'setup';
+let weekOffset = 0; let faText = ''; let rosterText = ''; let oppText = '';
 let search = '';
 let timerEnd = null; let timerHandle = null;
 let pendingAmbiguous = null; // { names: [], index, candidates }
@@ -20,19 +21,23 @@ let shot = { status: 'idle' }; // idle | reading | ready | error ; ready: { pars
 let vision = { checked: false, sample: null, images: false };
 // --- Live NBA stats (written by scripts/fetch-stats.mjs; hosted page reads the artifact db doc stats/latest,
 //     other copies read ./data/live-stats.json). Nothing is shown unless a real payload loads. ---
-let liveData = null; let liveStatus = 'not loaded';
+let liveData = null; let liveStatus = 'not loaded'; let scheduleData = null; let gamelogData = null;
 async function loadLiveStats() {
   try {
     if (window.claude && typeof window.claude.use === 'function') {
       const db = await window.claude.use('db');
       if (db) {
-        const snap = await db.doc('stats/latest').get();
+        const [snap, sch, gl] = await Promise.all([db.doc('stats/latest').get(), db.doc('stats/schedule').get().catch(() => null), db.doc('stats/gamelogs').get().catch(() => null)]);
+        if (sch && sch.exists) scheduleData = sch.data();
+        if (gl && gl.exists) gamelogData = gl.data();
         if (snap.exists) { liveData = snap.data(); liveStatus = 'artifact db'; render(); return; }
         liveStatus = 'no stats document yet'; render(); return;
       }
     }
     if (location.protocol !== 'file:') {
-      const res = await fetch('./data/live-stats.json', { cache: 'no-store' });
+      const [res, rs, rg] = await Promise.all([fetch('./data/live-stats.json', { cache: 'no-store' }), fetch('./data/schedule.json', { cache: 'no-store' }).catch(() => null), fetch('./data/gamelogs.json', { cache: 'no-store' }).catch(() => null)]);
+      if (rs && rs.ok) scheduleData = await rs.json().catch(() => null);
+      if (rg && rg.ok) gamelogData = await rg.json().catch(() => null);
       if (res.ok) { const j = await res.json(); if (j && j.players) { liveData = j; liveStatus = 'data/live-stats.json'; render(); return; } }
       liveStatus = 'data/live-stats.json not found';
     } else liveStatus = 'unavailable from a local file';
@@ -63,7 +68,8 @@ function setState(next, { undoable = true } = {}) { if (undoable) history.push(s
 
 function valued() {
   const weights = {}; for (const k of state.punts || []) weights[k] = 0;
-  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25, injuries: liveData.injuries || {} }).players : PLAYERS;
+  let base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25, injuries: liveData.injuries || {} }).players : PLAYERS;
+  if (gamelogData?.players) base = E.applyRecentForm(base, gamelogData.players, { n: 10, k: 10, use: state.useForm !== false }).players;
   return E.computeValues(base, { gpWeight: state.gpWeight !== false, weights });
 }
 function injuryBadge(p) {
@@ -96,7 +102,7 @@ function render() {
   const c = ctx();
   root.innerHTML = `
     ${view !== 'setup' ? header(c) : ''}
-    <main class="main">${view === 'setup' ? setupView(c) : view === 'draft' ? draftView(c) : view === 'players' ? playersView(c) : strategyView(c)}</main>
+    <main class="main">${view === 'setup' ? setupView(c) : view === 'draft' ? draftView(c) : view === 'players' ? playersView(c) : view === 'week' ? weekView(c) : strategyView(c)}</main>
     ${view !== 'setup' ? nav() : ''}
     ${detailId ? detailModal(c) : ''}
     ${pendingAmbiguous ? ambiguousModal() : ''}
@@ -120,7 +126,7 @@ function header(c) {
 
 function nav() {
   const b = (id, label) => `<button class="nav-btn ${view === id ? 'on' : ''}" data-view="${id}">${label}</button>`;
-  return `<nav class="nav">${b('draft', 'Draft Now')}${b('players', 'Players')}${b('strategy', 'Strategy')}</nav>`;
+  return `<nav class="nav">${b('week', 'Week')}${b('draft', 'Draft')}${b('players', 'Players')}${b('strategy', 'Strategy')}</nav>`;
 }
 
 function setupView() {
@@ -401,6 +407,77 @@ function playersView(c) {
   </section>`;
 }
 
+// ---------- In-season: Week view ----------
+function todayET() { return E.etDateOf(new Date().toISOString()); }
+function resolveList(text, all) {
+  const out = { ids: [], unmatched: [], ambiguous: [] };
+  for (const name of E.parseNameList(text)) { const r = E.resolveName(name, all); if (r.match) { if (!out.ids.includes(r.match.id)) out.ids.push(r.match.id); } else if (r.ambiguous) out.ambiguous.push({ name, options: r.ambiguous }); else out.unmatched.push(name); }
+  return out;
+}
+function myTeam(c) { const ids = state.myTeamIds?.length ? state.myTeamIds : c.roster.map(p => p.id); return ids.map(i => c.byId[i]).filter(Boolean); }
+function oppTeam(c) { return (state.oppTeamIds || []).map(i => c.byId[i]).filter(Boolean); }
+function pct(x) { return (100 * x).toFixed(0) + '%'; }
+function fmtTot(key, v) { return key === 'fgp' || key === 'ftp' ? (100 * v).toFixed(1) + '%' : v.toFixed(0); }
+
+function weekView(c) {
+  const today = todayET();
+  const cur = E.weekOf(today);
+  const w = E.weekRange(cur.week + weekOffset);
+  const fromDate = w.week === cur.week ? today : null;
+  const mine = myTeam(c), opp = oppTeam(c);
+  const haveSched = !!scheduleData?.teams;
+  const proj = haveSched ? E.projectWeek(mine, scheduleData, { ...w, fromDate }) : null;
+  const projFull = haveSched ? E.projectWeek(mine, scheduleData, w) : null;
+  const oproj = haveSched && opp.length ? E.projectWeek(opp, scheduleData, { ...w, fromDate }) : null;
+  const cmp = proj && oproj ? E.compareWeek(proj, oproj) : null;
+  const weights = cmp ? E.needWeights(cmp) : null;
+  const tonight = haveSched ? E.playingOn(mine, scheduleData, today) : [];
+  const faRes = resolveList(faText, c.avail);
+  const streams = haveSched && weights && faRes.ids.length ? E.streamCandidates(faRes.ids.map(i => c.byId[i]), scheduleData, { ...w, fromDate }, weights) : null;
+  const scoring = w.week >= E.SEASON.scoringStartsWeek;
+  return `
+  <section class="card">
+    <div class="row"><button class="btn-xs" id="wkPrev">◀</button><div><b>Week ${w.week}</b> <span class="muted small">${w.start} → ${w.end}${scoring ? '' : ' · not scored'}</span></div><button class="btn-xs" id="wkNext">▶</button></div>
+    ${!haveSched ? '<div class="flag small">No schedule loaded yet. The daily refresh writes it; until then this tab cannot project games.</div>' : `<div class="small muted">Schedule fetched ${esc(scheduleData.fetchedAt)}. Today (US): ${today}. ${fromDate ? 'Showing games remaining from today.' : ''}</div>`}
+  </section>
+  <section class="card">
+    <div class="label">MY YAHOO ROSTER (${mine.length})</div>
+    ${state.myTeamIds?.length ? '' : '<div class="small muted">Using your draft roster. Paste your current Yahoo roster to replace it.</div>'}
+    <form id="rosterForm" class="taken-form"><input id="rosterInput" placeholder="Paste names: Maxey, VanVleet, D. White…" value="${esc(rosterText)}" autocomplete="off"/><button class="btn-primary" type="submit">Set roster</button></form>
+    <div class="chips">${mine.map(p => `<span class="chip">${esc(p.name)} ${p.injury ? injuryBadge(p) : ''}</span>`).join('')}</div>
+    ${proj ? `<div class="small">Games ${fromDate ? 'left ' : ''}this week: <b>${proj.games}</b> (full week ${projFull.games}) · ${proj.perPlayer.map(x => `${esc(x.player.name.split(' ').slice(-1)[0])} ${x.games}${x.out ? ' OUT' : x.gtd ? ' GTD' : ''}`).join(' · ')}</div>` : ''}
+  </section>
+  <section class="card">
+    <div class="label">OPPONENT THIS WEEK (${opp.length})</div>
+    <form id="oppForm" class="taken-form"><input id="oppInput" placeholder="Paste opponent's roster names" value="${esc(oppText)}" autocomplete="off"/><button class="btn-primary" type="submit">Set opponent</button></form>
+    ${opp.length ? `<div class="chips">${opp.map(p => `<span class="chip">${esc(p.name)}</span>`).join('')}</div>` : '<div class="small muted">Paste or screenshot the opponent roster to get the category race.</div>'}
+    ${oproj ? `<div class="small">Their games ${fromDate ? 'left' : ''}: <b>${oproj.games}</b></div>` : ''}
+  </section>
+  ${cmp ? `<section class="card"><div class="label">CATEGORY RACE (projected totals, ${fromDate ? 'rest of week' : 'full week'})</div>
+    <table class="race"><thead><tr><th>Cat</th><th>Me</th><th>Opp</th><th>Win</th></tr></thead><tbody>
+    ${cmp.map(r => `<tr class="st-${r.state}"><td>${r.label}</td><td>${fmtTot(r.key, r.mine)}</td><td>${fmtTot(r.key, r.theirs)}</td><td>${pct(r.pWin)} <span class="small muted">${r.state}</span></td></tr>`).join('')}
+    </tbody></table>
+    <div class="small">Expected categories: <b>${cmp.reduce((s, r) => s + r.pWin, 0).toFixed(1)}</b> of 9. Chase: ${cmp.filter(r => r.state === 'swing' || r.state === 'behind').map(r => r.label).join(', ') || 'nothing, hold'}. Locked: ${cmp.filter(r => r.state === 'locked').map(r => r.label).join(', ') || 'none'}.</div>
+    <div class="small muted">Model: per-game rates (preseason blended with live and last-10 form) × scheduled games, OUT players excluded; win % from a normal approximation. Estimates, not guarantees.</div>
+  </section>` : ''}
+  <section class="card"><div class="label">TONIGHT (${today})</div>
+    ${haveSched ? `<div class="small">Playing: ${tonight.filter(t => t.plays && !t.out).map(t => esc(t.player.name) + (t.gtd ? ' (GTD)' : '')).join(', ') || 'nobody'}</div>
+    <div class="small muted">Idle: ${tonight.filter(t => !t.plays).map(t => esc(t.player.name)).join(', ') || 'none'}${tonight.some(t => t.out) ? ' · OUT: ' + tonight.filter(t => t.out).map(t => esc(t.player.name)).join(', ') : ''}</div>
+    <div class="small">${tonight.filter(t => t.plays && !t.out).length} of 10 starting slots can be filled by your own players tonight.</div>` : ''}
+  </section>
+  <section class="card"><div class="label">STREAMING (free agents × games left × categories to chase)</div>
+    <form id="faForm" class="taken-form"><input id="faInput" placeholder="Paste free-agent names from Yahoo" value="${esc(faText)}" autocomplete="off"/><button class="btn-primary" type="submit">Rank</button></form>
+    ${!cmp ? '<div class="small muted">Set the opponent first so the ranking knows which categories matter this week.</div>' : ''}
+    ${streams ? streams.slice(0, 10).map(s => `<div class="prow"><div class="pinfo" data-detail="${s.player.id}"><div>${esc(s.player.name)} <span class="muted">${esc(s.player.team)} ${s.player.positions.join('/')}</span> ${injuryBadge(s.player)}</div><div class="small muted">${s.games} game${s.games === 1 ? '' : 's'} left (${s.dates.map(d => d.slice(5)).join(', ')}) · fit ${s.fit.toFixed(1)} · score ${s.score.toFixed(1)}</div></div></div>`).join('') : ''}
+    ${faRes.unmatched.length ? `<div class="small muted">Not in pool: ${faRes.unmatched.map(esc).join(', ')}</div>` : ''}${faRes.ambiguous.length ? `<div class="small flag">Ambiguous: ${faRes.ambiguous.map(a => esc(a.name) + ' (' + a.options.map(o => esc(o.name)).join(' / ') + ')').join('; ')} — use the full name</div>` : ''}
+  </section>
+  <section class="card"><div class="label">PLAYOFF GAMES (weeks 20-22, ${E.weekRange(20).start} → ${E.weekRange(22).end}, approximate calendar)</div>
+    ${haveSched ? `<div class="small">${mine.map(p => `${esc(p.name.split(' ').slice(-1)[0])} ${E.playoffGames(scheduleData, p.team)}`).join(' · ')}</div><div class="small muted">Team totals: ${Object.keys(scheduleData.teams).sort().map(t => `${t} ${E.playoffGames(scheduleData, t)}`).join(' · ')}</div>` : '<div class="small muted">Needs the schedule.</div>'}
+  </section>
+  <section class="card"><label class="row"><span>Blend last-10 form into projections</span><input type="checkbox" id="useForm" ${state.useForm !== false ? 'checked' : ''}/></label>
+    <div class="small muted">${gamelogData ? `Game logs: ${gamelogData.count} players, fetched ${esc(gamelogData.fetchedAt)}` : 'No game logs loaded yet.'}</div></section>`;
+}
+
 function strategyView(c) {
   const slot = state.mySlot;
   const picks = slot ? E.picksForSlot(slot, state.numTeams) : [];
@@ -544,6 +621,12 @@ function bind(c) {
   const tf = $('#takenForm'); if (tf) tf.onsubmit = e => { e.preventDefault(); const v = $('#takenInput').value; processTaken(v); };
   const s = $('#search'); if (s) { s.oninput = () => { search = s.value; const pos = s.selectionStart; render(); const n = $('#search'); n.focus(); n.setSelectionRange(pos, pos); }; }
   const ss = $('#slotSel'); if (ss) ss.onchange = () => setState({ ...state, mySlot: +ss.value }, { undoable: false });
+  const wp = $('#wkPrev'); if (wp) wp.onclick = () => { weekOffset--; render(); };
+  const wn = $('#wkNext'); if (wn) wn.onclick = () => { weekOffset++; render(); };
+  const rf = $('#rosterForm'); if (rf) rf.onsubmit = e => { e.preventDefault(); rosterText = $('#rosterInput').value; const r = resolveList(rosterText, ctx().all); if (r.unmatched.length || r.ambiguous.length) notify(`Unmatched: ${[...r.unmatched, ...r.ambiguous.map(a => a.name + '?')].join(', ')}`); if (r.ids.length) setState({ ...state, myTeamIds: r.ids }, { undoable: false }); };
+  const of = $('#oppForm'); if (of) of.onsubmit = e => { e.preventDefault(); oppText = $('#oppInput').value; const r = resolveList(oppText, ctx().all); if (r.unmatched.length || r.ambiguous.length) notify(`Unmatched: ${[...r.unmatched, ...r.ambiguous.map(a => a.name + '?')].join(', ')}`); setState({ ...state, oppTeamIds: r.ids }, { undoable: false }); };
+  const ff = $('#faForm'); if (ff) ff.onsubmit = e => { e.preventDefault(); faText = $('#faInput').value; render(); };
+  const uf = $('#useForm'); if (uf) uf.onchange = () => setState({ ...state, useForm: uf.checked }, { undoable: false });
   const ul = $('#useLive'); if (ul) ul.onchange = () => setState({ ...state, useLive: ul.checked }, { undoable: false });
   const gp = $('#gpw'); if (gp) gp.onchange = () => setState({ ...state, gpWeight: gp.checked }, { undoable: false });
   const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });

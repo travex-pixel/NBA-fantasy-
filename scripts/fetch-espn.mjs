@@ -18,6 +18,52 @@ const out = args.out || 'data/live-stats.json';
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36', 'Accept': 'application/json' };
 const STATS_URL = (page) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?region=us&lang=en&contentorigin=espn&isqualified=false&limit=1000&page=${page}&season=${season}&seasontype=2`;
 const INJ_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries';
+const TEAMS_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams';
+const TEAM_SCHED_URL = (id) => `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${id}/schedule?season=${season}`;
+const GAMELOG_URL = (id) => `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?season=${season}`;
+const ESPN_TEAM_MAP = { GS: 'GSW', SA: 'SAS', NY: 'NYK', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS' };
+const normTeam = t => ESPN_TEAM_MAP[t] || t;
+/** UTC ISO -> US Eastern calendar date (Yahoo scores by ET day). */
+export function etDateOf(isoUtc) {
+  const d = new Date(isoUtc); const y = d.getUTCFullYear();
+  const nthSunday = (year, month, n) => { const first = new Date(Date.UTC(year, month, 1)); return 1 + ((7 - first.getUTCDay()) % 7) + 7 * (n - 1); };
+  const dstStart = Date.UTC(y, 2, nthSunday(y, 2, 2), 7), dstEnd = Date.UTC(y, 10, nthSunday(y, 10, 1), 6);
+  const off = d.getTime() >= dstStart && d.getTime() < dstEnd ? 4 : 5;
+  return new Date(d.getTime() - off * 3600000).toISOString().slice(0, 10);
+}
+/** Team schedule payload -> [[dateET, oppCode, home], ...] regular season only. Exported for tests. */
+export function normaliseSchedule(json, teamCode) {
+  const out = [];
+  for (const ev of json?.events || []) {
+    if ((ev.seasonType?.type ?? 2) !== 2) continue;
+    const comp = ev.competitions?.[0]; if (!comp) continue;
+    const me = comp.competitors?.find(c => normTeam(c.team?.abbreviation) === teamCode);
+    const opp = comp.competitors?.find(c => normTeam(c.team?.abbreviation) !== teamCode);
+    if (!me || !opp) continue;
+    out.push([etDateOf(ev.date), normTeam(opp.team.abbreviation), me.homeAway === 'home' ? 1 : 0]);
+  }
+  return out.sort((a, b) => a[0].localeCompare(b[0]));
+}
+/** Gamelog payload -> rows [dateET, min, pts, reb, ast, stl, blk, tpm, fgm, fga, ftm, fta, tov] newest first, regular season only, max `keep`. Exported for tests. */
+export function normaliseGamelog(json, keep = 10) {
+  const names = json?.names; if (!Array.isArray(names)) throw new Error('unexpected gamelog shape');
+  const ix = Object.fromEntries(names.map((n, i) => [n, i]));
+  const need = ['minutes', 'fieldGoalsMade-fieldGoalsAttempted', 'threePointFieldGoalsMade-threePointFieldGoalsAttempted', 'freeThrowsMade-freeThrowsAttempted', 'totalRebounds', 'assists', 'blocks', 'steals', 'turnovers', 'points'];
+  for (const n of need) if (!(n in ix)) throw new Error('gamelog missing ' + n);
+  const split = s => String(s).split('-').map(Number);
+  const rows = [];
+  for (const st of json.seasonTypes || []) {
+    if (!/regular/i.test(st.displayName || '')) continue;
+    for (const cat of st.categories || []) for (const e of cat.events || []) {
+      const ev = json.events?.[e.eventId]; const s = e.stats || [];
+      const [fgm, fga] = split(s[ix['fieldGoalsMade-fieldGoalsAttempted']]); const [tpm] = split(s[ix['threePointFieldGoalsMade-threePointFieldGoalsAttempted']]); const [ftm, fta] = split(s[ix['freeThrowsMade-freeThrowsAttempted']]);
+      rows.push([ev?.gameDate ? etDateOf(ev.gameDate) : null, Number(s[ix.minutes]) || 0, Number(s[ix.points]) || 0, Number(s[ix.totalRebounds]) || 0, Number(s[ix.assists]) || 0, Number(s[ix.steals]) || 0, Number(s[ix.blocks]) || 0, tpm || 0, fgm || 0, fga || 0, ftm || 0, fta || 0, Number(s[ix.turnovers]) || 0]);
+    }
+  }
+  rows.sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+  return rows.slice(0, keep);
+}
+async function mapLimit(items, limit, fn) { const out = new Array(items.length); let i = 0; await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => { while (i < items.length) { const k = i++; try { out[k] = await fn(items[k], k); } catch (e) { out[k] = { error: e.message }; } } })); return out; }
 
 async function getJson(url) {
   const res = await fetch(url, { headers: UA, signal: AbortSignal.timeout(45000) });
@@ -79,6 +125,26 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let injuries = {};
   try { injJson = args['injury-fixture'] ? JSON.parse(readFileSync(args['injury-fixture'], 'utf8')) : await getJson(INJ_URL); injuries = normaliseInjuries(injJson); }
   catch (e) { errors.push('injuries: ' + e.message); }
+  // --- schedule (30 teams) and game logs (players with minutes) ---
+  const schedOut = args['schedule-out'] || 'data/schedule.json'; const logsOut = args['gamelogs-out'] || 'data/gamelogs.json';
+  if (!args['stats-fixture'] && !args['skip-extras']) {
+    try {
+      const teams = (await getJson(TEAMS_URL))?.sports?.[0]?.leagues?.[0]?.teams?.map(t => ({ id: t.team.id, code: normTeam(t.team.abbreviation) })) || [];
+      if (teams.length < 30) throw new Error('teams list short: ' + teams.length);
+      const scheds = await mapLimit(teams, 6, async t => [t.code, normaliseSchedule(await getJson(TEAM_SCHED_URL(t.id)), t.code)]);
+      const sched = { fetchedAt: new Date().toISOString(), season: `${Number(season) - 1}-${String(season).slice(2)}`, teams: Object.fromEntries(scheds.filter(x => Array.isArray(x))) };
+      writeFileSync(schedOut, JSON.stringify(sched));
+      console.log(`wrote ${schedOut}: ${Object.keys(sched.teams).length} teams, ${Object.values(sched.teams).reduce((a, b) => a + b.length, 0)} games`);
+    } catch (e) { errors.push('schedule: ' + e.message); }
+    try {
+      const ids = []; for (const j of statsPages) for (const a of j.athletes || []) { const n = a?.athlete?.displayName; const row = n && players[n]; if (row && row.gp > 0 && row.min >= 12 && a.athlete.id) ids.push([n, a.athlete.id]); }
+      const logs = await mapLimit(ids, 6, async ([n, id]) => [n, normaliseGamelog(await getJson(GAMELOG_URL(id)), 10)]);
+      const good = logs.filter(x => Array.isArray(x) && x[1].length);
+      const gl = { fetchedAt: new Date().toISOString(), season: `${Number(season) - 1}-${String(season).slice(2)}`, count: good.length, players: Object.fromEntries(good) };
+      writeFileSync(logsOut, JSON.stringify(gl));
+      console.log(`wrote ${logsOut}: ${gl.count} players' last-10 game logs (${logs.filter(x => x && x.error).length} failed)`);
+    } catch (e) { errors.push('gamelogs: ' + e.message); }
+  }
   const payload = { source: args['stats-fixture'] ? 'fixture' : 'ESPN site.web.api.espn.com byathlete (per game) + site.api.espn.com injuries', season: `${Number(season) - 1}-${String(season).slice(2)}`, fetchedAt: new Date().toISOString(), count: Object.keys(players).length, injuryCount: Object.keys(injuries).length, statsNote, errors, players, injuries };
   if (!payload.count && !payload.injuryCount) throw new Error('nothing usable fetched (no current-season stats, no injuries); not writing');
   mkdirSync('data', { recursive: true });

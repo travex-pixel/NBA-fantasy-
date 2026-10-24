@@ -73,6 +73,8 @@
   .paste-box { border:2px dashed var(--accent); border-radius:12px; padding:18px 12px; text-align:center; font-weight:700; color:var(--accent); min-height:64px; margin:8px 0; background:#0e1627; }
   .paste-box img { max-width:100%; }
   .live { color:#7fd8ff; }
+  table.race { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; } .race th { text-align:left; color:var(--muted); font-size:11px; letter-spacing:.05em; padding:4px 6px; } .race td { padding:6px; border-top:1px solid var(--line); }
+  .race tr.st-locked td:first-child { border-left:4px solid var(--good); } .race tr.st-lean td:first-child { border-left:4px solid #8fd8a8; } .race tr.st-swing td:first-child { border-left:4px solid var(--accent); } .race tr.st-behind td:first-child { border-left:4px solid #ff9b6b; } .race tr.st-lost td:first-child { border-left:4px solid var(--bad); }
   .inj { font-size:11px; font-weight:800; padding:2px 6px; border-radius:6px; vertical-align:middle; }
   .inj-out { background:var(--bad); color:#2a0000; } .inj-gtd { background:var(--accent); color:var(--accent-text); }
   code { background:#0e1627; padding:1px 5px; border-radius:4px; }

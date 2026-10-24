@@ -67,6 +67,8 @@
   .paste-box { border:2px dashed var(--accent); border-radius:12px; padding:18px 12px; text-align:center; font-weight:700; color:var(--accent); min-height:64px; margin:8px 0; background:#0e1627; }
   .paste-box img { max-width:100%; }
   .live { color:#7fd8ff; }
+  table.race { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; } .race th { text-align:left; color:var(--muted); font-size:11px; letter-spacing:.05em; padding:4px 6px; } .race td { padding:6px; border-top:1px solid var(--line); }
+  .race tr.st-locked td:first-child { border-left:4px solid var(--good); } .race tr.st-lean td:first-child { border-left:4px solid #8fd8a8; } .race tr.st-swing td:first-child { border-left:4px solid var(--accent); } .race tr.st-behind td:first-child { border-left:4px solid #ff9b6b; } .race tr.st-lost td:first-child { border-left:4px solid var(--bad); }
   .inj { font-size:11px; font-weight:800; padding:2px 6px; border-radius:6px; vertical-align:middle; }
   .inj-out { background:var(--bad); color:#2a0000; } .inj-gtd { background:var(--accent); color:var(--accent-text); }
   code { background:#0e1627; padding:1px 5px; border-radius:4px; }
@@ -503,6 +505,143 @@ function applyLiveStats(players, liveMap, opts = {}) {
   return { players: out, matched, unmatched: players.length - matched };
 }
 
+// ---------- Season calendar, schedule and weekly projection ----------
+/** ESPN team codes -> the codes used in data.js / Yahoo. */
+const ESPN_TEAM_MAP = { GS: 'GSW', SA: 'SAS', NY: 'NYK', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS' };
+function normTeam(t) { return ESPN_TEAM_MAP[t] || t; }
+
+/** Game dates are stored as US-Eastern calendar dates (YYYY-MM-DD), which is how Yahoo scores a "day". */
+function etDateOf(isoUtc) {
+  const d = new Date(isoUtc);
+  const y = d.getUTCFullYear();
+  // US DST: second Sunday of March 2am -> first Sunday of November 2am (approximate with UTC dates)
+  const nthSunday = (year, month, n) => { const first = new Date(Date.UTC(year, month, 1)); const day = first.getUTCDay(); return 1 + ((7 - day) % 7) + 7 * (n - 1); };
+  const dstStart = Date.UTC(y, 2, nthSunday(y, 2, 2), 7); // 2am EST = 07:00 UTC
+  const dstEnd = Date.UTC(y, 10, nthSunday(y, 10, 1), 6); // 2am EDT = 06:00 UTC
+  const offsetH = d.getTime() >= dstStart && d.getTime() < dstEnd ? 4 : 5;
+  const local = new Date(d.getTime() - offsetH * 3600000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** Yahoo fantasy weeks for 2026-27. Week 1 is the short opening week; week 2 onward run Monday to Sunday.
+ *  Note: Yahoo sometimes merges the All-Star week into a two-week period; this calendar does not, so
+ *  numbering after mid-February is approximate until confirmed against the league page. */
+const SEASON = { week1Start: '2026-10-20', week2Start: '2026-10-26', playoffWeeks: [20, 21, 22], scoringStartsWeek: 2 };
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+function weekRange(week) {
+  if (week <= 1) return { week: 1, start: SEASON.week1Start, end: addDays(SEASON.week2Start, -1) };
+  const start = addDays(SEASON.week2Start, (week - 2) * 7);
+  return { week, start, end: addDays(start, 6) };
+}
+function weekOf(dateStr) {
+  if (dateStr < SEASON.week2Start) return weekRange(1);
+  const days = Math.round((Date.parse(dateStr + 'T00:00:00Z') - Date.parse(SEASON.week2Start + 'T00:00:00Z')) / 86400000);
+  return weekRange(2 + Math.floor(days / 7));
+}
+
+/** schedule = { teams: { CODE: [[dateET, oppCode, home(1|0)], ...] } } */
+function gamesFor(schedule, team, start, end) {
+  const list = schedule?.teams?.[normTeam(team)] || [];
+  return list.filter(g => g[0] >= start && g[0] <= end).map(g => ({ date: g[0], opp: g[1], home: !!g[2] }));
+}
+function playoffGames(schedule, team) {
+  return SEASON.playoffWeeks.reduce((s, w) => { const r = weekRange(w); return s + gamesFor(schedule, team, r.start, r.end).length; }, 0);
+}
+
+function injuryOut(p, end) {
+  const st = String(p.injury?.status || '').toLowerCase();
+  if (!st) return false;
+  if (/out|doubt/.test(st) && !/day/.test(st)) { const rd = p.injury?.returnDate; return !rd || rd > end; }
+  return false;
+}
+
+/** Project a roster's category totals over a date range from per-game rates and the schedule.
+ *  Players with status Out (and no return inside the range) count zero games. Returns per-player games,
+ *  totals (counting stats, makes/attempts and the derived percentages) and a per-category variance. */
+function projectWeek(players, schedule, { start, end, fromDate = null } = {}) {
+  const totals = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0, fgm: 0, fga: 0, ftm: 0, fta: 0 };
+  const variance = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0 };
+  const perPlayer = [];
+  for (const p of players) {
+    const all = gamesFor(schedule, p.team, start, end);
+    const remaining = fromDate ? all.filter(g => g.date >= fromDate) : all;
+    const out = injuryOut(p, end);
+    const games = out ? 0 : remaining.length;
+    perPlayer.push({ player: p, games, dates: remaining.map(g => g.date), out, gtd: /day|questionable|game time/i.test(p.injury?.status || '') });
+    if (!games) continue;
+    for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) { const r = p[k] || 0; totals[k] += r * games; variance[k] += games * Math.pow(0.45 * r + 0.3, 2); }
+    totals.fgm += (p.fgp || 0) * (p.fga || 0) * games; totals.fga += (p.fga || 0) * games;
+    totals.ftm += (p.ftp || 0) * (p.fta || 0) * games; totals.fta += (p.fta || 0) * games;
+  }
+  totals.fgp = totals.fga ? totals.fgm / totals.fga : 0; totals.ftp = totals.fta ? totals.ftm / totals.fta : 0;
+  variance.fgp = totals.fga ? (totals.fgp * (1 - totals.fgp)) / totals.fga : 0;
+  variance.ftp = totals.fta ? (totals.ftp * (1 - totals.ftp)) / totals.fta : 0;
+  return { perPlayer, totals, variance, games: perPlayer.reduce((s, x) => s + x.games, 0) };
+}
+
+function normCdf(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const d = 0.3989423 * Math.exp(-x * x / 2); let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x >= 0 ? 1 - p : p; }
+
+/** Compare two weekly projections category by category. label: locked (>=80%), lean (65-80), swing (35-65), behind (20-35), lost (<20). */
+function compareWeek(mine, theirs) {
+  return CATS.map(c => {
+    const a = mine.totals[c.key], b = theirs.totals[c.key];
+    const sd = Math.sqrt((mine.variance[c.key] || 0) + (theirs.variance[c.key] || 0)) || 1e-6;
+    let z = (a - b) / sd; if (!c.higherIsBetter) z = -z;
+    const p = normCdf(z);
+    const label = p >= 0.8 ? 'locked' : p >= 0.65 ? 'lean' : p > 0.35 ? 'swing' : p > 0.2 ? 'behind' : 'lost';
+    return { key: c.key, label: c.label, mine: a, theirs: b, pWin: p, state: label };
+  });
+}
+
+/** Which categories to chase this week: swing and behind categories carry full weight, lean half, locked and lost none. */
+function needWeights(cmp) {
+  const w = {}; for (const r of cmp) w[r.key] = r.state === 'swing' || r.state === 'behind' ? 1 : r.state === 'lean' ? 0.5 : 0; return w;
+}
+
+/** Rank free agents for streaming: category value in the needed categories times games left in the range. */
+function streamCandidates(freeAgents, schedule, { start, end, fromDate = null }, weights) {
+  return freeAgents.map(p => {
+    const all = gamesFor(schedule, p.team, start, end); const left = (fromDate ? all.filter(g => g.date >= fromDate) : all);
+    const games = injuryOut(p, end) ? 0 : left.length;
+    const fit = CATS.reduce((s, c) => s + (weights[c.key] || 0) * (p.z?.[c.key] || 0), 0);
+    return { player: p, games, dates: left.map(g => g.date), fit, score: games * (fit + 0.5) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+/** Players with a game on a given ET date, with injury flags. */
+function playingOn(players, schedule, dateET) {
+  return players.map(p => ({ player: p, plays: gamesFor(schedule, p.team, dateET, dateET).length > 0, out: injuryOut(p, dateET), gtd: /day|questionable|game time/i.test(p.injury?.status || '') }));
+}
+
+// ---------- Recent form from game logs ----------
+/** gamelog rows: [dateET, min, pts, reb, ast, stl, blk, tpm, fgm, fga, ftm, fta, tov] newest first. */
+function recentAverages(rows, n = 10) {
+  const g = (rows || []).filter(r => r && r[1] > 0).slice(0, n);
+  if (!g.length) return null;
+  const sum = i => g.reduce((s, r) => s + (r[i] || 0), 0);
+  const L = g.length;
+  const fga = sum(9) / L, fta = sum(11) / L;
+  return { gp: L, min: sum(1) / L, pts: sum(2) / L, reb: sum(3) / L, ast: sum(4) / L, stl: sum(5) / L, blk: sum(6) / L, tpm: sum(7) / L, fga, fta, fgp: fga ? sum(8) / sum(9) : null, ftp: fta ? sum(10) / sum(11) : null, tov: sum(12) / L };
+}
+/** Blend the last-n form into each player's current line with weight n/(n+k). Idempotent (uses .preseason/.live baseline when present). */
+function applyRecentForm(players, gamelogs, { n = 10, k = 10, use = true } = {}) {
+  const idx = new Map(); for (const [name, rows] of Object.entries(gamelogs || {})) idx.set(normaliseName(name), rows);
+  let matched = 0;
+  const out = players.map(p => {
+    const rows = idx.get(normaliseName(p.name)); const form = rows ? recentAverages(rows, n) : null;
+    if (!form) return { ...p, form: null };
+    matched++;
+    if (!use) return { ...p, form };
+    const base = p.formBase || { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tpm: p.tpm, fgp: p.fgp, fga: p.fga, ftp: p.ftp, fta: p.fta, tov: p.tov };
+    const w = form.gp / (form.gp + k), v = 1 - w; const b = {};
+    for (const key of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov', 'fga', 'fta']) b[key] = +(base[key] * v + form[key] * w).toFixed(2);
+    b.fgp = form.fgp == null ? base.fgp : +(((base.fgp * base.fga * v) + (form.fgp * form.fga * w)) / (b.fga || 1)).toFixed(3);
+    b.ftp = form.ftp == null ? base.ftp : +(((base.ftp * base.fta * v) + (form.ftp * form.fta * w)) / (b.fta || 1)).toFixed(3);
+    return { ...p, ...b, form, formBase: base };
+  });
+  return { players: out, matched };
+}
+
 // Player pool for the 2026-27 season — Worldwide League draft assistant.
 //
 // HOW TO READ THIS FILE (honesty notes):
@@ -743,7 +882,7 @@ const SOURCES = [
   { title: 'Yahoo Fantasy Sports API', url: 'https://sports.yahoo.com/developer/', status: 'OAuth 2.0 with registered app (client id/secret + redirect URI) and signed API agreement required; no credentials exist in this environment, so NO live integration is implemented' },
 ];
 
-const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick, applyLiveStats };
+const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick, applyLiveStats, ESPN_TEAM_MAP, normTeam, etDateOf, SEASON, addDays, weekRange, weekOf, gamesFor, playoffGames, injuryOut, projectWeek, normCdf, compareWeek, needWeights, streamCandidates, playingOn, recentAverages, applyRecentForm };
 // UI layer — vanilla JS, mobile-first. All logic lives in engine.js.
 
 
@@ -754,7 +893,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 let state = load() || E.createState();
 let history = []; // undo stack of previous states
-let view = state.mySlot ? 'draft' : 'setup';
+let view = state.mySlot ? (state.myTeamIds?.length ? 'week' : 'draft') : 'setup';
+let weekOffset = 0; let faText = ''; let rosterText = ''; let oppText = '';
 let search = '';
 let timerEnd = null; let timerHandle = null;
 let pendingAmbiguous = null; // { names: [], index, candidates }
@@ -765,19 +905,23 @@ let shot = { status: 'idle' }; // idle | reading | ready | error ; ready: { pars
 let vision = { checked: false, sample: null, images: false };
 // --- Live NBA stats (written by scripts/fetch-stats.mjs; hosted page reads the artifact db doc stats/latest,
 //     other copies read ./data/live-stats.json). Nothing is shown unless a real payload loads. ---
-let liveData = null; let liveStatus = 'not loaded';
+let liveData = null; let liveStatus = 'not loaded'; let scheduleData = null; let gamelogData = null;
 async function loadLiveStats() {
   try {
     if (window.claude && typeof window.claude.use === 'function') {
       const db = await window.claude.use('db');
       if (db) {
-        const snap = await db.doc('stats/latest').get();
+        const [snap, sch, gl] = await Promise.all([db.doc('stats/latest').get(), db.doc('stats/schedule').get().catch(() => null), db.doc('stats/gamelogs').get().catch(() => null)]);
+        if (sch && sch.exists) scheduleData = sch.data();
+        if (gl && gl.exists) gamelogData = gl.data();
         if (snap.exists) { liveData = snap.data(); liveStatus = 'artifact db'; render(); return; }
         liveStatus = 'no stats document yet'; render(); return;
       }
     }
     if (location.protocol !== 'file:') {
-      const res = await fetch('./data/live-stats.json', { cache: 'no-store' });
+      const [res, rs, rg] = await Promise.all([fetch('./data/live-stats.json', { cache: 'no-store' }), fetch('./data/schedule.json', { cache: 'no-store' }).catch(() => null), fetch('./data/gamelogs.json', { cache: 'no-store' }).catch(() => null)]);
+      if (rs && rs.ok) scheduleData = await rs.json().catch(() => null);
+      if (rg && rg.ok) gamelogData = await rg.json().catch(() => null);
       if (res.ok) { const j = await res.json(); if (j && j.players) { liveData = j; liveStatus = 'data/live-stats.json'; render(); return; } }
       liveStatus = 'data/live-stats.json not found';
     } else liveStatus = 'unavailable from a local file';
@@ -808,7 +952,8 @@ function setState(next, { undoable = true } = {}) { if (undoable) history.push(s
 
 function valued() {
   const weights = {}; for (const k of state.punts || []) weights[k] = 0;
-  const base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25, injuries: liveData.injuries || {} }).players : PLAYERS;
+  let base = liveData?.players ? E.applyLiveStats(PLAYERS, liveData.players, { use: state.useLive !== false, k: 25, injuries: liveData.injuries || {} }).players : PLAYERS;
+  if (gamelogData?.players) base = E.applyRecentForm(base, gamelogData.players, { n: 10, k: 10, use: state.useForm !== false }).players;
   return E.computeValues(base, { gpWeight: state.gpWeight !== false, weights });
 }
 function injuryBadge(p) {
@@ -841,7 +986,7 @@ function render() {
   const c = ctx();
   root.innerHTML = `
     ${view !== 'setup' ? header(c) : ''}
-    <main class="main">${view === 'setup' ? setupView(c) : view === 'draft' ? draftView(c) : view === 'players' ? playersView(c) : strategyView(c)}</main>
+    <main class="main">${view === 'setup' ? setupView(c) : view === 'draft' ? draftView(c) : view === 'players' ? playersView(c) : view === 'week' ? weekView(c) : strategyView(c)}</main>
     ${view !== 'setup' ? nav() : ''}
     ${detailId ? detailModal(c) : ''}
     ${pendingAmbiguous ? ambiguousModal() : ''}
@@ -865,7 +1010,7 @@ function header(c) {
 
 function nav() {
   const b = (id, label) => `<button class="nav-btn ${view === id ? 'on' : ''}" data-view="${id}">${label}</button>`;
-  return `<nav class="nav">${b('draft', 'Draft Now')}${b('players', 'Players')}${b('strategy', 'Strategy')}</nav>`;
+  return `<nav class="nav">${b('week', 'Week')}${b('draft', 'Draft')}${b('players', 'Players')}${b('strategy', 'Strategy')}</nav>`;
 }
 
 function setupView() {
@@ -1146,6 +1291,77 @@ function playersView(c) {
   </section>`;
 }
 
+// ---------- In-season: Week view ----------
+function todayET() { return E.etDateOf(new Date().toISOString()); }
+function resolveList(text, all) {
+  const out = { ids: [], unmatched: [], ambiguous: [] };
+  for (const name of E.parseNameList(text)) { const r = E.resolveName(name, all); if (r.match) { if (!out.ids.includes(r.match.id)) out.ids.push(r.match.id); } else if (r.ambiguous) out.ambiguous.push({ name, options: r.ambiguous }); else out.unmatched.push(name); }
+  return out;
+}
+function myTeam(c) { const ids = state.myTeamIds?.length ? state.myTeamIds : c.roster.map(p => p.id); return ids.map(i => c.byId[i]).filter(Boolean); }
+function oppTeam(c) { return (state.oppTeamIds || []).map(i => c.byId[i]).filter(Boolean); }
+function pct(x) { return (100 * x).toFixed(0) + '%'; }
+function fmtTot(key, v) { return key === 'fgp' || key === 'ftp' ? (100 * v).toFixed(1) + '%' : v.toFixed(0); }
+
+function weekView(c) {
+  const today = todayET();
+  const cur = E.weekOf(today);
+  const w = E.weekRange(cur.week + weekOffset);
+  const fromDate = w.week === cur.week ? today : null;
+  const mine = myTeam(c), opp = oppTeam(c);
+  const haveSched = !!scheduleData?.teams;
+  const proj = haveSched ? E.projectWeek(mine, scheduleData, { ...w, fromDate }) : null;
+  const projFull = haveSched ? E.projectWeek(mine, scheduleData, w) : null;
+  const oproj = haveSched && opp.length ? E.projectWeek(opp, scheduleData, { ...w, fromDate }) : null;
+  const cmp = proj && oproj ? E.compareWeek(proj, oproj) : null;
+  const weights = cmp ? E.needWeights(cmp) : null;
+  const tonight = haveSched ? E.playingOn(mine, scheduleData, today) : [];
+  const faRes = resolveList(faText, c.avail);
+  const streams = haveSched && weights && faRes.ids.length ? E.streamCandidates(faRes.ids.map(i => c.byId[i]), scheduleData, { ...w, fromDate }, weights) : null;
+  const scoring = w.week >= E.SEASON.scoringStartsWeek;
+  return `
+  <section class="card">
+    <div class="row"><button class="btn-xs" id="wkPrev">◀</button><div><b>Week ${w.week}</b> <span class="muted small">${w.start} → ${w.end}${scoring ? '' : ' · not scored'}</span></div><button class="btn-xs" id="wkNext">▶</button></div>
+    ${!haveSched ? '<div class="flag small">No schedule loaded yet. The daily refresh writes it; until then this tab cannot project games.</div>' : `<div class="small muted">Schedule fetched ${esc(scheduleData.fetchedAt)}. Today (US): ${today}. ${fromDate ? 'Showing games remaining from today.' : ''}</div>`}
+  </section>
+  <section class="card">
+    <div class="label">MY YAHOO ROSTER (${mine.length})</div>
+    ${state.myTeamIds?.length ? '' : '<div class="small muted">Using your draft roster. Paste your current Yahoo roster to replace it.</div>'}
+    <form id="rosterForm" class="taken-form"><input id="rosterInput" placeholder="Paste names: Maxey, VanVleet, D. White…" value="${esc(rosterText)}" autocomplete="off"/><button class="btn-primary" type="submit">Set roster</button></form>
+    <div class="chips">${mine.map(p => `<span class="chip">${esc(p.name)} ${p.injury ? injuryBadge(p) : ''}</span>`).join('')}</div>
+    ${proj ? `<div class="small">Games ${fromDate ? 'left ' : ''}this week: <b>${proj.games}</b> (full week ${projFull.games}) · ${proj.perPlayer.map(x => `${esc(x.player.name.split(' ').slice(-1)[0])} ${x.games}${x.out ? ' OUT' : x.gtd ? ' GTD' : ''}`).join(' · ')}</div>` : ''}
+  </section>
+  <section class="card">
+    <div class="label">OPPONENT THIS WEEK (${opp.length})</div>
+    <form id="oppForm" class="taken-form"><input id="oppInput" placeholder="Paste opponent's roster names" value="${esc(oppText)}" autocomplete="off"/><button class="btn-primary" type="submit">Set opponent</button></form>
+    ${opp.length ? `<div class="chips">${opp.map(p => `<span class="chip">${esc(p.name)}</span>`).join('')}</div>` : '<div class="small muted">Paste or screenshot the opponent roster to get the category race.</div>'}
+    ${oproj ? `<div class="small">Their games ${fromDate ? 'left' : ''}: <b>${oproj.games}</b></div>` : ''}
+  </section>
+  ${cmp ? `<section class="card"><div class="label">CATEGORY RACE (projected totals, ${fromDate ? 'rest of week' : 'full week'})</div>
+    <table class="race"><thead><tr><th>Cat</th><th>Me</th><th>Opp</th><th>Win</th></tr></thead><tbody>
+    ${cmp.map(r => `<tr class="st-${r.state}"><td>${r.label}</td><td>${fmtTot(r.key, r.mine)}</td><td>${fmtTot(r.key, r.theirs)}</td><td>${pct(r.pWin)} <span class="small muted">${r.state}</span></td></tr>`).join('')}
+    </tbody></table>
+    <div class="small">Expected categories: <b>${cmp.reduce((s, r) => s + r.pWin, 0).toFixed(1)}</b> of 9. Chase: ${cmp.filter(r => r.state === 'swing' || r.state === 'behind').map(r => r.label).join(', ') || 'nothing, hold'}. Locked: ${cmp.filter(r => r.state === 'locked').map(r => r.label).join(', ') || 'none'}.</div>
+    <div class="small muted">Model: per-game rates (preseason blended with live and last-10 form) × scheduled games, OUT players excluded; win % from a normal approximation. Estimates, not guarantees.</div>
+  </section>` : ''}
+  <section class="card"><div class="label">TONIGHT (${today})</div>
+    ${haveSched ? `<div class="small">Playing: ${tonight.filter(t => t.plays && !t.out).map(t => esc(t.player.name) + (t.gtd ? ' (GTD)' : '')).join(', ') || 'nobody'}</div>
+    <div class="small muted">Idle: ${tonight.filter(t => !t.plays).map(t => esc(t.player.name)).join(', ') || 'none'}${tonight.some(t => t.out) ? ' · OUT: ' + tonight.filter(t => t.out).map(t => esc(t.player.name)).join(', ') : ''}</div>
+    <div class="small">${tonight.filter(t => t.plays && !t.out).length} of 10 starting slots can be filled by your own players tonight.</div>` : ''}
+  </section>
+  <section class="card"><div class="label">STREAMING (free agents × games left × categories to chase)</div>
+    <form id="faForm" class="taken-form"><input id="faInput" placeholder="Paste free-agent names from Yahoo" value="${esc(faText)}" autocomplete="off"/><button class="btn-primary" type="submit">Rank</button></form>
+    ${!cmp ? '<div class="small muted">Set the opponent first so the ranking knows which categories matter this week.</div>' : ''}
+    ${streams ? streams.slice(0, 10).map(s => `<div class="prow"><div class="pinfo" data-detail="${s.player.id}"><div>${esc(s.player.name)} <span class="muted">${esc(s.player.team)} ${s.player.positions.join('/')}</span> ${injuryBadge(s.player)}</div><div class="small muted">${s.games} game${s.games === 1 ? '' : 's'} left (${s.dates.map(d => d.slice(5)).join(', ')}) · fit ${s.fit.toFixed(1)} · score ${s.score.toFixed(1)}</div></div></div>`).join('') : ''}
+    ${faRes.unmatched.length ? `<div class="small muted">Not in pool: ${faRes.unmatched.map(esc).join(', ')}</div>` : ''}${faRes.ambiguous.length ? `<div class="small flag">Ambiguous: ${faRes.ambiguous.map(a => esc(a.name) + ' (' + a.options.map(o => esc(o.name)).join(' / ') + ')').join('; ')} — use the full name</div>` : ''}
+  </section>
+  <section class="card"><div class="label">PLAYOFF GAMES (weeks 20-22, ${E.weekRange(20).start} → ${E.weekRange(22).end}, approximate calendar)</div>
+    ${haveSched ? `<div class="small">${mine.map(p => `${esc(p.name.split(' ').slice(-1)[0])} ${E.playoffGames(scheduleData, p.team)}`).join(' · ')}</div><div class="small muted">Team totals: ${Object.keys(scheduleData.teams).sort().map(t => `${t} ${E.playoffGames(scheduleData, t)}`).join(' · ')}</div>` : '<div class="small muted">Needs the schedule.</div>'}
+  </section>
+  <section class="card"><label class="row"><span>Blend last-10 form into projections</span><input type="checkbox" id="useForm" ${state.useForm !== false ? 'checked' : ''}/></label>
+    <div class="small muted">${gamelogData ? `Game logs: ${gamelogData.count} players, fetched ${esc(gamelogData.fetchedAt)}` : 'No game logs loaded yet.'}</div></section>`;
+}
+
 function strategyView(c) {
   const slot = state.mySlot;
   const picks = slot ? E.picksForSlot(slot, state.numTeams) : [];
@@ -1289,6 +1505,12 @@ function bind(c) {
   const tf = $('#takenForm'); if (tf) tf.onsubmit = e => { e.preventDefault(); const v = $('#takenInput').value; processTaken(v); };
   const s = $('#search'); if (s) { s.oninput = () => { search = s.value; const pos = s.selectionStart; render(); const n = $('#search'); n.focus(); n.setSelectionRange(pos, pos); }; }
   const ss = $('#slotSel'); if (ss) ss.onchange = () => setState({ ...state, mySlot: +ss.value }, { undoable: false });
+  const wp = $('#wkPrev'); if (wp) wp.onclick = () => { weekOffset--; render(); };
+  const wn = $('#wkNext'); if (wn) wn.onclick = () => { weekOffset++; render(); };
+  const rf = $('#rosterForm'); if (rf) rf.onsubmit = e => { e.preventDefault(); rosterText = $('#rosterInput').value; const r = resolveList(rosterText, ctx().all); if (r.unmatched.length || r.ambiguous.length) notify(`Unmatched: ${[...r.unmatched, ...r.ambiguous.map(a => a.name + '?')].join(', ')}`); if (r.ids.length) setState({ ...state, myTeamIds: r.ids }, { undoable: false }); };
+  const of = $('#oppForm'); if (of) of.onsubmit = e => { e.preventDefault(); oppText = $('#oppInput').value; const r = resolveList(oppText, ctx().all); if (r.unmatched.length || r.ambiguous.length) notify(`Unmatched: ${[...r.unmatched, ...r.ambiguous.map(a => a.name + '?')].join(', ')}`); setState({ ...state, oppTeamIds: r.ids }, { undoable: false }); };
+  const ff = $('#faForm'); if (ff) ff.onsubmit = e => { e.preventDefault(); faText = $('#faInput').value; render(); };
+  const uf = $('#useForm'); if (uf) uf.onchange = () => setState({ ...state, useForm: uf.checked }, { undoable: false });
   const ul = $('#useLive'); if (ul) ul.onchange = () => setState({ ...state, useLive: ul.checked }, { undoable: false });
   const gp = $('#gpw'); if (gp) gp.onchange = () => setState({ ...state, gpWeight: gp.checked }, { undoable: false });
   const rs = $('#reset'); if (rs) rs.onclick = () => ask({ text: 'Clear ALL picks and start over? This cannot be undone.', buttons: [{ label: 'Clear everything', primary: true, onClick: () => { history = []; dialog = null; setState(E.createState({ mySlot: state.mySlot, teamNames: state.teamNames }), { undoable: false }); } }, { label: 'Keep my draft' }] });
