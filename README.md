@@ -41,11 +41,26 @@ If the player pool is wrong for a name, use *Players → Log a pick ... not in t
   your next pick" (ADP vs snake order) − flags. Confidence reflects the gap to the backups and risk flags.
 * Missing stats → z = 0 and the player is flagged `fallback`; no fabricated numbers.
 
+## Week tab (in-season)
+
+* **My Yahoo roster / Opponent:** paste the names from Yahoo (or type them). Unmatched or ambiguous names are
+  reported; use full names to disambiguate.
+* **Category race:** projected totals for both rosters over the remaining days of the Yahoo week (games from the
+  real NBA schedule × per-game rates, OUT players excluded), win probability per category and a state label:
+  locked / lean / swing / behind / lost. "Chase" lists the categories worth streaming for.
+* **Tonight:** who on your roster plays today (US date), who is idle, who is OUT/GTD.
+* **Streaming:** paste free-agent names; ranked by games left this week × value in the categories you are chasing.
+* **Playoff games:** games per team in weeks 20-22 (calendar is approximate until Yahoo's All-Star handling is known).
+* **Form:** last-10 game logs are blended into every projection (toggle).
+
+Yahoo weeks: week 1 = 20-25 Oct 2026, then Monday-Sunday. Scoring starts week 2.
+
 ## Live NBA stats and injuries
 
-`scripts/fetch-espn.mjs` pulls 2026-27 per-game stats for every player (ESPN `site.web.api.espn.com` byathlete API)
-and the league injury report (ESPN `site.api.espn.com` injuries API) into `data/live-stats.json`. The hosted page
-reads the same payload from its artifact database document `stats/latest` (written with the ArtifactData tool);
+`scripts/fetch-espn.mjs` pulls 2026-27 per-game stats for every player (ESPN `site.web.api.espn.com` byathlete API),
+the league injury report (ESPN `site.api.espn.com` injuries API), all 30 team schedules (ET dates) and last-10 game
+logs for players with minutes, into `data/live-stats.json`, `data/schedule.json` and `data/gamelogs.json`. The hosted page
+reads the same payloads from its artifact database documents `stats/latest`, `stats/schedule` and `stats/gamelogs` (written with the ArtifactData tool);
 other copies read the JSON file over HTTP. The model blends live and preseason lines
 `(preseason × 25 + live × games) ÷ (25 + games)` with percentages blended on makes and attempts (toggle under
 *Strategy → Live NBA stats*), shows injury badges (OUT / GTD with return date) on every card, and the recommender
