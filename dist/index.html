@@ -565,25 +565,47 @@ function injuryOut(p, end) {
 /** Project a roster's category totals over a date range from per-game rates and the schedule.
  *  Players with status Out (and no return inside the range) count zero games. Returns per-player games,
  *  totals (counting stats, makes/attempts and the derived percentages) and a per-category variance. */
-function projectWeek(players, schedule, { start, end, fromDate = null } = {}) {
+function projectWeek(players, schedule, { start, end, fromDate = null, slots = LEAGUE.slots.slice(0, 10) } = {}) {
+  // Yahoo only counts players in the ten starting slots each day. For each date, start the most valuable
+  // healthy players who have a game, subject to slot eligibility (PG, SG, G, SF, PF, F, C, C, Util, Util).
   const totals = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0, fgm: 0, fga: 0, ftm: 0, fta: 0 };
   const variance = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tpm: 0, tov: 0 };
-  const perPlayer = [];
-  for (const p of players) {
-    const all = gamesFor(schedule, p.team, start, end);
-    const remaining = fromDate ? all.filter(g => g.date >= fromDate) : all;
-    const out = injuryOut(p, end);
-    const games = out ? 0 : remaining.length;
-    perPlayer.push({ player: p, games, dates: remaining.map(g => g.date), out, gtd: /day|questionable|game time/i.test(p.injury?.status || '') });
-    if (!games) continue;
-    for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) { const r = p[k] || 0; totals[k] += r * games; variance[k] += games * Math.pow(0.45 * r + 0.3, 2); }
-    totals.fgm += (p.fgp || 0) * (p.fga || 0) * games; totals.fga += (p.fga || 0) * games;
-    totals.ftm += (p.ftp || 0) * (p.fta || 0) * games; totals.fta += (p.fta || 0) * games;
+  const info = new Map(players.map(p => [p, { player: p, games: 0, dates: [], benched: 0, out: injuryOut(p, end), gtd: /day|questionable|game time/i.test(p.injury?.status || '') }]));
+  const days = [];
+  for (let d = fromDate && fromDate > start ? fromDate : start; d <= end; d = addDays(d, 1)) days.push(d);
+  const rank = p => (typeof p.value === 'number' ? p.value : 0);
+  for (const d of days) {
+    const playing = players.filter(p => !injuryOut(p, d) && gamesFor(schedule, p.team, d, d).length).sort((a, b) => rank(b) - rank(a));
+    const starters = [];
+    for (const p of playing) {
+      if (!p.positions?.length) { if (starters.length < slots.length) starters.push(p); continue; }
+      const trial = [...starters, p];
+      if (assignRoster(trial, slots).overflow.length === 0) starters.push(p); else info.get(p).benched++;
+    }
+    for (const p of starters) {
+      const x = info.get(p); x.games++; x.dates.push(d);
+      for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov']) { const r = p[k] || 0; totals[k] += r; variance[k] += Math.pow(0.45 * r + 0.3, 2); }
+      totals.fgm += (p.fgp || 0) * (p.fga || 0); totals.fga += p.fga || 0;
+      totals.ftm += (p.ftp || 0) * (p.fta || 0); totals.fta += p.fta || 0;
+    }
   }
   totals.fgp = totals.fga ? totals.fgm / totals.fga : 0; totals.ftp = totals.fta ? totals.ftm / totals.fta : 0;
   variance.fgp = totals.fga ? (totals.fgp * (1 - totals.fgp)) / totals.fga : 0;
   variance.ftp = totals.fta ? (totals.ftp * (1 - totals.ftp)) / totals.fta : 0;
+  const perPlayer = [...info.values()];
   return { perPlayer, totals, variance, games: perPlayer.reduce((s, x) => s + x.games, 0) };
+}
+
+/** Add actual week-to-date totals (from Yahoo's matchup screen) to a rest-of-week projection.
+ *  actual: { fgm, fga, ftm, fta, tpm, pts, reb, ast, stl, blk, tov } */
+function addActuals(proj, actual) {
+  const t = { ...proj.totals };
+  for (const k of ['pts', 'reb', 'ast', 'stl', 'blk', 'tpm', 'tov', 'fgm', 'fga', 'ftm', 'fta']) t[k] = (t[k] || 0) + (actual?.[k] || 0);
+  t.fgp = t.fga ? t.fgm / t.fga : 0; t.ftp = t.fta ? t.ftm / t.fta : 0;
+  const v = { ...proj.variance };
+  v.fgp = t.fga ? (t.fgp * (1 - t.fgp)) * (proj.totals.fga || 0) / (t.fga * t.fga) : 0;
+  v.ftp = t.fta ? (t.ftp * (1 - t.ftp)) * (proj.totals.fta || 0) / (t.fta * t.fta) : 0;
+  return { ...proj, totals: t, variance: v };
 }
 
 function normCdf(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const d = 0.3989423 * Math.exp(-x * x / 2); let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x >= 0 ? 1 - p : p; }
@@ -889,7 +911,7 @@ const SOURCES = [
   { title: 'Yahoo Fantasy Sports API', url: 'https://sports.yahoo.com/developer/', status: 'OAuth 2.0 with registered app (client id/secret + redirect URI) and signed API agreement required; no credentials exist in this environment, so NO live integration is implemented' },
 ];
 
-const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick, applyLiveStats, ESPN_TEAM_MAP, normTeam, etDateOf, SEASON, addDays, weekRange, weekOf, gamesFor, playoffGames, injuryOut, projectWeek, normCdf, compareWeek, needWeights, streamCandidates, playingOn, recentAverages, applyRecentForm };
+const E = { CATS, LEAGUE, SLOT_ELIGIBILITY, ROSTER_SIZE, teamOnClock, roundOf, pickInRound, picksForSlot, nextPickForSlot, followingPickForSlot, normaliseName, resolveName, parseNameList, COUNTING, mean, sd, computeValues, canFillSlot, assignRoster, openSlots, teamProfile, recommend, createState, currentOverall, isMyTurn, draftedIds, myRoster, rosterForSlot, availablePlayers, draftPlayer, undoLastPick, applyLiveStats, ESPN_TEAM_MAP, normTeam, etDateOf, SEASON, addDays, weekRange, weekOf, gamesFor, playoffGames, injuryOut, projectWeek, addActuals, normCdf, compareWeek, needWeights, streamCandidates, playingOn, recentAverages, applyRecentForm };
 // UI layer — vanilla JS, mobile-first. All logic lives in engine.js.
 
 
