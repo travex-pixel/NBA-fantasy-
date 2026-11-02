@@ -209,6 +209,8 @@ const ROWS = [
 ['queen','Derik Queen','NOP',['C','PF'],11.0,7.5,2.2,0.9,0.6,0.3,.500,7.5,.700,4.0,2.3,70,null,'Rookie','NOP rookie C, starting (Nov 2026)'],
 ['gsantos','Gui Santos','GSW',['PF','SF'],7.0,4.0,1.3,0.5,0.3,0.8,.480,5.5,.750,2.0,0.8,70,null,null,null],
 ['walter','Ja\'Kobe Walter','TOR',['PG','SG'],12.0,3.8,2.2,1.5,0.5,2.5,.430,9.5,.800,1.5,0.7,72,null,null,'TOR starter after Ingram trade'],
+['melton','De\'Anthony Melton','GSW',['PG','SG'],9.0,3.5,2.5,1.3,0.4,1.8,.420,8.0,.780,1.5,1.2,60,null,null,null],
+['preed','Paul Reed','DET',['C','PF'],7.0,5.5,1.2,0.7,0.8,0.2,.540,5.0,.700,1.5,1.0,65,null,null,null],
 ['aldama','Santi Aldama','MEM',['PF','C'],12.0,6.5,2.5,0.7,0.6,1.8,.470,9.5,.750,2.0,1.1,66,180,null,null],
 ];
 
